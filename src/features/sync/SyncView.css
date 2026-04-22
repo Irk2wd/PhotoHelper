@@ -1,0 +1,330 @@
+.sv-root {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 32px 28px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* 标题区 */
+.sv-header {
+  margin-bottom: 4px;
+}
+
+.sv-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+}
+
+.sv-subtitle {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* 卡片 */
+.sv-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sv-card--bottom {
+  margin-top: 4px;
+}
+
+/* 字段组 */
+.sv-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sv-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sv-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+/* 扩展名多选行 */
+.sv-exts-row {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.sv-exts-group {
+  flex: 1;
+  min-width: 200px;
+}
+
+.sv-checkboxes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.sv-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.sv-checkbox-item input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sv-checkbox-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.sv-checkbox-item:hover .sv-checkbox-label {
+  color: var(--text-primary);
+}
+
+/* 文件夹路径输入行 */
+.sv-folder-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.sv-input {
+  flex: 1;
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  transition: border-color 0.15s;
+}
+.sv-input:focus {
+  border-color: var(--accent);
+}
+.sv-input::placeholder {
+  color: var(--text-tertiary);
+  font-family: var(--font-sans);
+}
+
+/* 模式切换 */
+.sv-toggle-group {
+  display: flex;
+  gap: 6px;
+}
+
+.sv-toggle {
+  padding: 7px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  transition: all 0.15s;
+}
+.sv-toggle:hover {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+.sv-toggle--active {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* 按钮 */
+.sv-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 18px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.sv-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sv-btn--primary {
+  background: var(--accent);
+  color: #fff;
+}
+.sv-btn--primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.sv-btn--ghost {
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+}
+.sv-btn--ghost:hover:not(:disabled) {
+  border-color: var(--border-hover);
+  background: var(--bg-surface-3);
+}
+
+.sv-btn--danger {
+  background: var(--danger-subtle);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  color: var(--danger);
+}
+.sv-btn--danger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.22);
+}
+
+.sv-btn--sm {
+  padding: 7px 12px;
+  font-size: 12px;
+}
+
+.sv-actions-top {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* 错误提示 */
+.sv-error {
+  background: var(--danger-subtle);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+/* 统计栏 */
+.sv-stats {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sv-stat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+
+.sv-stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.sv-stat-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.sv-stat--success .sv-stat-value { color: var(--success); }
+.sv-stat--warning .sv-stat-value { color: var(--warning); }
+.sv-stat--danger  .sv-stat-value { color: var(--danger);  }
+.sv-stat--default .sv-stat-value { color: var(--text-primary); }
+
+/* 同步模式卡片 */
+.sv-sync-modes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.sv-mode-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-surface-2);
+  text-align: left;
+  transition: all 0.15s;
+}
+.sv-mode-card:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-surface-3);
+}
+.sv-mode-card--active {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.sv-mode-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.sv-mode-card--active .sv-mode-label {
+  color: var(--accent);
+}
+
+.sv-mode-desc {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* 执行结果 */
+.sv-result {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+}
+.sv-result--ok {
+  background: var(--success-subtle);
+  color: var(--success);
+}
+.sv-result--warn {
+  background: var(--warning-subtle);
+  color: var(--warning);
+}
+
+/* 加载动画 */
+.sv-spinner {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: sv-spin 0.65s linear infinite;
+}
+@keyframes sv-spin {
+  to { transform: rotate(360deg); }
+}

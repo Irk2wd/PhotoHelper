@@ -1,0 +1,186 @@
+.cd-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.cd-panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 560px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+}
+
+/* 标题栏 */
+.cd-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.cd-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cd-icon {
+  display: flex;
+  align-items: center;
+  color: var(--danger);
+}
+
+.cd-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.cd-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  transition: all 0.12s;
+  border: none;
+}
+.cd-close:hover {
+  background: var(--bg-surface-3);
+  color: var(--text-primary);
+}
+
+/* 摘要 */
+.cd-summary {
+  padding: 14px 20px 10px;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+.cd-summary strong {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+/* 文件列表 */
+.cd-file-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 20px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cd-file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-subtle);
+}
+
+.cd-file-icon {
+  color: var(--danger);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  opacity: 0.8;
+}
+
+.cd-file-path {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 确认勾选 */
+.cd-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 20px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-top: 1px solid var(--border);
+}
+.cd-checkbox-label:hover {
+  color: var(--text-primary);
+}
+
+.cd-checkbox {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+/* 空状态 */
+.cd-empty {
+  padding: 28px 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+}
+
+/* 底部按钮 */
+.cd-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.cd-btn {
+  padding: 8px 20px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+
+.cd-btn--cancel {
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+}
+.cd-btn--cancel:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-surface-3);
+}
+
+.cd-btn--confirm {
+  background: var(--danger);
+  color: #fff;
+  border: none;
+}
+.cd-btn--confirm:hover:not(:disabled) {
+  background: #e05555;
+}
+.cd-btn--confirm:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
