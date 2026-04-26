@@ -81,64 +81,10 @@ npm run tauri build
 构建产物位于：
 
 ```
-src-tauri/target/release/tauri-app.exe          # 免安装可执行文件
-src-tauri/target/release/bundle/msi/            # Windows MSI 安装包
+src-tauri/target/release/bundle/msi/PhotoHelper_*_x64_en-US.msi
 ```
+
+> **注意**：裸 `.exe` 文件需要系统已安装 WebView2 运行时才能运行，不建议直接分发。请使用 MSI 安装包，它会自动处理 WebView2 依赖。
 
 > 首次构建需要下载并编译 Rust 依赖，耗时约 5–15 分钟，后续增量编译约 30 秒。
 
-
-### 环境要求
-
-| 工具 | 版本要求 | 安装方式 |
-|------|----------|----------|
-| [Node.js](https://nodejs.org/) | >= 18 | 官网下载或 `winget install OpenJS.NodeJS` |
-| [Rust](https://www.rust-lang.org/tools/install) | stable | `winget install Rustlang.Rustup`，安装后重启终端 |
-| [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) | 任意 | Windows 11 已内置；Windows 10 需手动安装 |
-
-> Windows 安装 Rust 后若提示找不到 `cargo`，在 PowerShell 执行：
-> ```powershell
-> $env:PATH += ";$env:USERPROFILE\.cargo\bin"
-> ```
-> 或永久写入环境变量：
-> ```powershell
-> [System.Environment]::SetEnvironmentVariable("PATH", $env:PATH + ";$env:USERPROFILE\.cargo\bin", "User")
-> ```
-
----
-
-### 步骤
-
-**1. 克隆仓库**
-
-```bash
-git clone git@github.com:Irk2wd/PhotoHelper.git
-cd PhotoHelper
-```
-
-**2. 安装前端依赖**
-
-```bash
-npm install
-```
-
-**3. 开发模式（热更新）**
-
-```bash
-npm run tauri dev
-```
-
-**4. 构建生产包**
-
-```bash
-npm run tauri build
-```
-
-构建产物位于：
-
-```
-src-tauri/target/release/tauri-app.exe          # 免安装可执行文件
-src-tauri/target/release/bundle/msi/            # Windows MSI 安装包
-```
-
-> 首次构建需要下载并编译 Rust 依赖，耗时约 5–15 分钟，后续增量编译约 30 秒。

@@ -42,7 +42,7 @@ jobs:
             ## PhotoHelper ${{ github.ref_name }}
 
             ### 下载安装
-            - **Windows 安装包**：下载 `PhotoHelper_*_x64_en-US.msi` 双击安装
-            - **免安装版**：下载 `tauri-app.exe` 直接运行
+            - **Windows 安装包**：下载 `PhotoHelper_*_x64_en-US.msi` 双击安装即可
+            - Windows 11 内置 WebView2，Windows 10 安装包会自动处理运行时依赖
           releaseDraft: false
           prerelease: false
