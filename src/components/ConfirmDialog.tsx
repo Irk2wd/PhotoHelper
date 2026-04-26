@@ -4,11 +4,18 @@ import "./ConfirmDialog.css";
 interface Props {
   open: boolean;
   toDelete: string[];
+  mode?: "trash" | "permanent";
   onCancel: () => void;
   onConfirm: () => void;
 }
 
-export default function ConfirmDialog({ open, toDelete, onCancel, onConfirm }: Props) {
+export default function ConfirmDialog({
+  open,
+  toDelete,
+  mode = "trash",
+  onCancel,
+  onConfirm,
+}: Props) {
   const [checked, setChecked] = useState(false);
 
   // 每次打开时重置勾选
@@ -19,6 +26,15 @@ export default function ConfirmDialog({ open, toDelete, onCancel, onConfirm }: P
   if (!open) return null;
 
   const isEmpty = toDelete.length === 0;
+  const isPermanent = mode === "permanent";
+  const title = isPermanent ? "回收站删除失败" : "确认同步操作";
+  const summary = isPermanent
+    ? <>以下 <strong>{toDelete.length}</strong> 个文件未能移入回收站，当前环境可能不支持该能力。是否直接彻底删除？</>
+    : <>将把以下 <strong>{toDelete.length}</strong> 个文件移入系统回收站（可恢复）：</>;
+  const checkboxLabel = isPermanent
+    ? "我已确认，以上文件将被彻底删除且无法恢复"
+    : "我已确认，以上文件将被移入回收站";
+  const confirmLabel = isPermanent ? "彻底删除" : "确认执行";
 
   return (
     <div className="cd-overlay" onClick={onCancel}>
@@ -35,7 +51,7 @@ export default function ConfirmDialog({ open, toDelete, onCancel, onConfirm }: P
                 <path d="M9 6V4h6v2" />
               </svg>
             </span>
-            <h2 className="cd-title">确认同步操作</h2>
+            <h2 className="cd-title">{title}</h2>
           </div>
           <button className="cd-close" onClick={onCancel} aria-label="关闭">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -53,7 +69,7 @@ export default function ConfirmDialog({ open, toDelete, onCancel, onConfirm }: P
           <>
             {/* 摘要 */}
             <div className="cd-summary">
-              将把以下 <strong>{toDelete.length}</strong> 个文件移入系统回收站（可恢复）：
+              {summary}
             </div>
 
             {/* 文件列表 */}
@@ -79,7 +95,7 @@ export default function ConfirmDialog({ open, toDelete, onCancel, onConfirm }: P
                 checked={checked}
                 onChange={(e) => setChecked(e.target.checked)}
               />
-              <span>我已确认，以上文件将被移入回收站</span>
+              <span>{checkboxLabel}</span>
             </label>
           </>
         )}
@@ -95,7 +111,7 @@ export default function ConfirmDialog({ open, toDelete, onCancel, onConfirm }: P
               onClick={onConfirm}
               disabled={!checked}
             >
-              确认执行
+              {confirmLabel}
             </button>
           )}
         </div>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useSyncEngine, computeToDelete, computeStats } from "./useSyncEngine";
 import {
@@ -40,9 +40,12 @@ export default function SyncView() {
   const [rawFolder, setRawFolder] = useState("");
   const [syncMode, setSyncMode] = useState<SyncMode>("heif_to_raw");
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [fallbackConfirmOpen, setFallbackConfirmOpen] = useState(false);
   const [toDelete, setToDelete] = useState<string[]>([]);
+  const [fallbackToDelete, setFallbackToDelete] = useState<string[]>([]);
   const [heifExts, setHeifExts] = useState<Set<string>>(new Set(DEFAULT_HEIF_EXTS));
   const [rawExts, setRawExts] = useState<Set<string>>(new Set(DEFAULT_RAW_EXTS));
+  const fallbackConfirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
 
   function toggleExt(set: Set<string>, setFn: (s: Set<string>) => void, ext: string) {
     const next = new Set(set);
@@ -69,9 +72,47 @@ export default function SyncView() {
     setConfirmOpen(true);
   }
 
+  function requestPermanentDeleteConfirmation(paths: string[]) {
+    setFallbackToDelete(paths);
+    setFallbackConfirmOpen(true);
+    return new Promise<boolean>((resolve) => {
+      fallbackConfirmResolverRef.current = resolve;
+    });
+  }
+
+  function resolvePermanentDeleteConfirmation(confirmed: boolean) {
+    setFallbackConfirmOpen(false);
+    setFallbackToDelete([]);
+    fallbackConfirmResolverRef.current?.(confirmed);
+    fallbackConfirmResolverRef.current = null;
+  }
+
   async function handleConfirm() {
     setConfirmOpen(false);
-    await engine.execute(toDelete);
+    await engine.execute(toDelete, {
+      confirmPermanentDelete: requestPermanentDeleteConfirmation,
+    });
+  }
+
+  function renderExecuteResult() {
+    const result = engine.lastExecuteResult;
+    if (!result) return null;
+
+    if (result.failed.length === 0) {
+      if (result.permanentlyDeleted > 0) {
+        if (result.trashed > 0) {
+          return `✓ 已处理 ${result.deleted} 个文件，其中 ${result.trashed} 个移入回收站，${result.permanentlyDeleted} 个已彻底删除`;
+        }
+        return `✓ 已彻底删除 ${result.permanentlyDeleted} 个文件`;
+      }
+      return `✓ 已将 ${result.deleted} 个文件移入回收站`;
+    }
+
+    if (result.permanentlyDeleted > 0) {
+      return `已处理 ${result.deleted} 个文件，其中 ${result.trashed} 个移入回收站，${result.permanentlyDeleted} 个已彻底删除，仍有 ${result.failed.length} 个失败`;
+    }
+
+    return `已移入回收站 ${result.trashed} 个，${result.failed.length} 个失败`;
   }
 
   return (
@@ -226,9 +267,7 @@ export default function SyncView() {
         {/* 执行结果 */}
         {engine.lastExecuteResult && (
           <div className={`sv-result ${engine.lastExecuteResult.failed.length > 0 ? "sv-result--warn" : "sv-result--ok"}`}>
-            {engine.lastExecuteResult.failed.length === 0
-              ? `✓ 已将 ${engine.lastExecuteResult.deleted} 个文件移入回收站`
-              : `已删除 ${engine.lastExecuteResult.deleted} 个，${engine.lastExecuteResult.failed.length} 个失败`}
+            {renderExecuteResult()}
           </div>
         )}
 
@@ -260,6 +299,13 @@ export default function SyncView() {
         toDelete={toDelete}
         onCancel={() => setConfirmOpen(false)}
         onConfirm={handleConfirm}
+      />
+      <ConfirmDialog
+        open={fallbackConfirmOpen}
+        toDelete={fallbackToDelete}
+        mode="permanent"
+        onCancel={() => resolvePermanentDeleteConfirmation(false)}
+        onConfirm={() => resolvePermanentDeleteConfirmation(true)}
       />
     </div>
   );

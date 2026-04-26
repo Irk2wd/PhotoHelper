@@ -156,12 +156,23 @@ export interface SyncEngineState {
   isScanning: boolean;
   isExecuting: boolean;
   scanError: string | null;
-  lastExecuteResult: { deleted: number; failed: string[] } | null;
+  lastExecuteResult: ExecuteResult | null;
+}
+
+export interface ExecuteResult {
+  deleted: number;
+  trashed: number;
+  permanentlyDeleted: number;
+  failed: string[];
+}
+
+export interface ExecuteOptions {
+  confirmPermanentDelete?: (failedPaths: string[]) => Promise<boolean>;
 }
 
 export interface SyncEngineActions {
   scan: (config: ScanConfig) => Promise<void>;
-  execute: (toDelete: string[]) => Promise<{ deleted: number; failed: string[] }>;
+  execute: (toDelete: string[], options?: ExecuteOptions) => Promise<ExecuteResult>;
   reset: () => void;
 }
 
@@ -170,9 +181,7 @@ export function useSyncEngine(): SyncEngineState & SyncEngineActions {
   const [isScanning, setIsScanning] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
-  const [lastExecuteResult, setLastExecuteResult] = useState<
-    { deleted: number; failed: string[] } | null
-  >(null);
+  const [lastExecuteResult, setLastExecuteResult] = useState<ExecuteResult | null>(null);
 
   const scan = useCallback(async (config: ScanConfig) => {
     setIsScanning(true);
@@ -203,19 +212,35 @@ export function useSyncEngine(): SyncEngineState & SyncEngineActions {
     }
   }, []);
 
-  const execute = useCallback(async (toDelete: string[]) => {
+  const execute = useCallback(async (toDelete: string[], options?: ExecuteOptions) => {
     setIsExecuting(true);
     try {
-      const failed = await invoke<string[]>("delete_to_trash", { paths: toDelete });
-      const deleted = toDelete.length - failed.length;
-      const result = { deleted, failed };
+      const failedToTrash = await invoke<string[]>("delete_to_trash", { paths: toDelete });
+      const trashed = toDelete.length - failedToTrash.length;
+
+      let permanentlyDeleted = 0;
+      let failed = failedToTrash;
+      if (failedToTrash.length > 0 && options?.confirmPermanentDelete) {
+        const shouldDeletePermanently = await options.confirmPermanentDelete(failedToTrash);
+        if (shouldDeletePermanently) {
+          const permanentDeleteFailed = await invoke<string[]>("delete_permanently", {
+            paths: failedToTrash,
+          });
+          permanentlyDeleted = failedToTrash.length - permanentDeleteFailed.length;
+          failed = permanentDeleteFailed;
+        }
+      }
+
+      const deleted = trashed + permanentlyDeleted;
+      const result = { deleted, trashed, permanentlyDeleted, failed };
       setLastExecuteResult(result);
+
+      const deletedSet = new Set(toDelete.filter((path) => !failed.includes(path)));
       // 重新过滤掉已删除的配对
       setPairs((prev) =>
         prev
           .map((p) => {
             const newP = { ...p };
-            const deletedSet = new Set(toDelete.filter((f) => !failed.includes(f)));
             if (newP.heifPath && deletedSet.has(newP.heifPath)) newP.heifPath = undefined;
             if (newP.rawPath && deletedSet.has(newP.rawPath)) newP.rawPath = undefined;
             newP.status =

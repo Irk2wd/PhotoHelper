@@ -1,5 +1,6 @@
 use serde::Serialize;
 use std::fs;
+use std::path::Path;
 
 #[derive(Serialize)]
 pub struct FileEntry {
@@ -28,7 +29,28 @@ fn scan_folder(path: String) -> Result<Vec<FileEntry>, String> {
 fn delete_to_trash(paths: Vec<String>) -> Vec<String> {
     let mut failed = Vec::new();
     for path_str in &paths {
-        if let Err(_) = trash::delete(std::path::Path::new(path_str)) {
+        if let Err(_) = trash::delete(Path::new(path_str)) {
+            failed.push(path_str.clone());
+        }
+    }
+    failed
+}
+
+fn delete_path_permanently(path: &Path) -> std::io::Result<()> {
+    let metadata = fs::metadata(path)?;
+    if metadata.is_dir() {
+        fs::remove_dir_all(path)
+    } else {
+        fs::remove_file(path)
+    }
+}
+
+/// 将指定路径列表的文件直接彻底删除，返回失败的路径列表
+#[tauri::command]
+fn delete_permanently(paths: Vec<String>) -> Vec<String> {
+    let mut failed = Vec::new();
+    for path_str in &paths {
+        if let Err(_) = delete_path_permanently(Path::new(path_str)) {
             failed.push(path_str.clone());
         }
     }
@@ -40,7 +62,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![scan_folder, delete_to_trash])
+    .invoke_handler(tauri::generate_handler![scan_folder, delete_to_trash, delete_permanently])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
