@@ -1,0 +1,169 @@
+.cv-root {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 32px 28px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* 标题区 */
+.cv-header {
+  margin-bottom: 4px;
+}
+
+.cv-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+}
+
+.cv-subtitle {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* 卡片 */
+.cv-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* 文件夹输入行 */
+.cv-folder-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.cv-input {
+  flex: 1;
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  transition: border-color 0.15s;
+}
+.cv-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+.cv-input::placeholder {
+  color: var(--text-tertiary);
+  font-family: var(--font-sans);
+}
+
+/* 操作按钮行 */
+.cv-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* 小节标签 */
+.cv-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+/* 分类表格 */
+.cv-table {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cv-table-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-2);
+}
+
+.cv-table-footer {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  text-align: right;
+}
+
+/* 分类徽章 */
+.cv-cat-badge {
+  display: inline-block;
+  min-width: 76px;
+  padding: 3px 9px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+.cv-cat-badge--raw   { background: rgba(99, 102, 241, 0.12); color: #818cf8; border-color: rgba(99, 102, 241, 0.28); }
+.cv-cat-badge--heif  { background: rgba(167, 139, 250, 0.12); color: #a78bfa; border-color: rgba(167, 139, 250, 0.28); }
+.cv-cat-badge--jpeg  { background: rgba(52, 211, 153, 0.12); color: #34d399; border-color: rgba(52, 211, 153, 0.28); }
+.cv-cat-badge--png   { background: rgba(96, 165, 250, 0.12); color: #60a5fa; border-color: rgba(96, 165, 250, 0.28); }
+.cv-cat-badge--tiff  { background: rgba(251, 191, 36, 0.12); color: #fbbf24; border-color: rgba(251, 191, 36, 0.28); }
+.cv-cat-badge--video { background: rgba(244, 114, 182, 0.12); color: #f472b6; border-color: rgba(244, 114, 182, 0.28); }
+.cv-cat-badge--other { background: var(--bg-surface-2); color: var(--text-tertiary); border-color: var(--border); }
+
+/* 文件数 */
+.cv-row-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 68px;
+}
+
+/* 扩展名样本 */
+.cv-row-exts {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+}
+
+/* 空状态 */
+.cv-empty {
+  padding: 24px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-tertiary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+/* 结果 Banner */
+.cv-result-banner {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.25);
+  color: #34d399;
+}
+
+.cv-result-banner--warn {
+  background: var(--danger-subtle);
+  border-color: rgba(248, 113, 113, 0.25);
+  color: var(--danger);
+}

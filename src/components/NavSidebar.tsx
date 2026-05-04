@@ -20,6 +20,17 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    id: "classify",
+    label: "照片分类",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 6h18" />
+        <path d="M7 12h10" />
+        <path d="M10 18h4" />
+      </svg>
+    ),
+  },
 ];
 
 interface Props {
@@ -62,7 +73,7 @@ export default function NavSidebar({ currentView, onNavigate }: Props) {
 
       {/* 底部版本 */}
       <div className="nav-footer">
-        <span className="nav-version">v0.1.0</span>
+        <span className="nav-version">v0.2.0</span>
       </div>
     </nav>
   );
