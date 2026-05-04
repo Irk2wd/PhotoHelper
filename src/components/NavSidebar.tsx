@@ -73,7 +73,7 @@ export default function NavSidebar({ currentView, onNavigate }: Props) {
 
       {/* 底部版本 */}
       <div className="nav-footer">
-        <span className="nav-version">v0.2.0</span>
+        <span className="nav-version">v0.3.0</span>
       </div>
     </nav>
   );
