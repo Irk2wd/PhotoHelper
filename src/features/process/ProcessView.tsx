@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import "./ProcessView.css";
 
 // ─── 类型定义 ────────────────────────────────────────────
@@ -38,8 +39,10 @@ export interface PipelineStep {
 interface ExecuteProcessResult {
   processed: number;
   skipped_compress: number;
+  wic_converted: number;
   failed: string[];
   output_folder: string;
+  cancelled: boolean;
 }
 
 // ─── 默认配置 ────────────────────────────────────────────
@@ -77,6 +80,12 @@ export function estimateCompressedSize(
   const dot = fileName.lastIndexOf(".");
   const ext = dot >= 0 ? fileName.slice(dot).toLowerCase() : "";
   const q = compress.jpeg_quality / 100;
+
+  // HEIF 系列：经 WIC 解码后转为 JPEG，原始文件通常比同质量 JPEG 小约 50%
+  const HEIF_EXTS = [".hif", ".heic", ".heif", ".avif"];
+  if (HEIF_EXTS.includes(ext)) {
+    return Math.round(originalBytes * 2 * Math.pow(q, 1.2));
+  }
 
   if (!isCompressSupported(ext)) return originalBytes;
 
@@ -119,8 +128,10 @@ export function computeOutputName(
     }
     if (step.step_type === "compress" && step.compress) {
       const cc = step.compress;
+      const HEIF_EXTS = [".hif", ".heic", ".heif", ".avif"];
       if (outExt === ".png" && cc.png_mode === "to_jpeg") outExt = ".jpg";
       else if (isCompressSupported(outExt) && outExt !== ".png") outExt = ".jpg";
+      else if (HEIF_EXTS.includes(outExt)) outExt = ".jpg"; // WIC 转换
     }
   }
   return `${stem}${outExt}`;
@@ -314,7 +325,7 @@ function StepCard({ step, index, total, previewSample, onChange, onMove, onRemov
               </div>
 
               <div className="pv-compress-note">
-                HEIF / HIF / AVIF 格式暂不支持压缩，将仅做重命名或直接复制
+                HEIF / HIF / AVIF 格式将通过 Windows WIC API 转换为 JPEG（需安装「HEIF Image Extensions」）；未安装时直接复制原文件
               </div>
             </>
           )}
@@ -340,6 +351,7 @@ export default function ProcessView() {
   const [files, setFiles] = useState<ProcessFileInfo[]>([]);
   const [result, setResult] = useState<ExecuteProcessResult | null>(null);
   const [error, setError] = useState("");
+  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const [steps, setSteps] = useState<PipelineStep[]>([
     { id: uid(), step_type: "rename",   enabled: true,  rename: { ...DEFAULT_RENAME } },
     { id: uid(), step_type: "compress", enabled: true,  compress: { ...DEFAULT_COMPRESS } },
@@ -405,6 +417,7 @@ export default function ProcessView() {
     setFiles([]);
     setResult(null);
     setError("");
+    setProgress(null);
   }
 
   async function pickFolder() {
@@ -429,9 +442,20 @@ export default function ProcessView() {
     }
   }
 
+  async function handleCancel() {
+    await invoke("cancel_process");
+  }
+
   async function handleExecute() {
     setPhase("executing");
     setError("");
+    setProgress({ current: 0, total: files.length });
+
+    const unlisten = await listen<{ current: number; total: number }>(
+      "process-progress",
+      e => setProgress(e.payload)
+    );
+
     try {
       const data = await invoke<ExecuteProcessResult>("execute_process", {
         args: {
@@ -450,6 +474,9 @@ export default function ProcessView() {
     } catch (e) {
       setError(String(e));
       setPhase("scanned");
+    } finally {
+      unlisten();
+      setProgress(null);
     }
   }
 
@@ -552,6 +579,24 @@ export default function ProcessView() {
         {phase === "scanned" && enabledCount === 0 && (
           <div className="pv-warn">请至少启用一个处理步骤</div>
         )}
+        {phase === "executing" && progress && (
+          <div className="pv-progress">
+            <div className="pv-progress-bar">
+              <div
+                className="pv-progress-fill"
+                style={{ width: `${progress.total > 0 ? Math.round(progress.current / progress.total * 100) : 0}%` }}
+              />
+            </div>
+            <span className="pv-progress-label">
+              {progress.current} / {progress.total}
+            </span>            <button
+              className="sv-btn sv-btn--danger pv-stop-btn"
+              onClick={handleCancel}
+              title="停止处理"
+            >
+              停止
+            </button>          </div>
+        )}
       </div>
 
       {/* 预览表格 */}
@@ -570,7 +615,10 @@ export default function ProcessView() {
             </div>
             {files.map((f, i) => {
               const estSize = estimatedSizes ? estimatedSizes[i] : null;
-              const notSupported = !f.compress_supported && hasCompress;
+              const fileExt = (f.name.slice(f.name.lastIndexOf(".")) || "").toLowerCase();
+              const isHeif = [".hif", ".heic", ".heif", ".avif"].includes(fileExt);
+              // HEIF 通过 WIC 可转换，不算"不支持"
+              const notSupported = !f.compress_supported && hasCompress && !isHeif;
               return (
                 <div key={f.name} className="pv-table-row" style={{ gridTemplateColumns: hasCompress ? "2fr 70px 90px 2fr 80px" : "2fr 80px 2fr 80px" }}>
                   <span className="pv-cell-mono pv-cell-ellipsis" title={f.name}>{f.name}</span>
@@ -584,7 +632,7 @@ export default function ProcessView() {
                     {previewNames[i]}
                   </span>
                   <span className="pv-cell-note">
-                    {notSupported ? "跳过压缩" : ""}
+                    {notSupported ? "WIC→JPEG" : ""}
                   </span>
                 </div>
               );
@@ -600,12 +648,16 @@ export default function ProcessView() {
       {/* 结果 Banner */}
       {phase === "done" && result && (
         <div className="pv-card">
-          <div className={`pv-result-banner ${result.failed.length > 0 ? "pv-result-banner--warn" : ""}`}>
-            {result.failed.length === 0
-              ? `✓ 全部完成，共 ${result.processed} 个文件 → ${result.output_folder}`
-              : `已处理 ${result.processed} 个，${result.failed.length} 个失败`}
+          <div className={`pv-result-banner ${result.cancelled ? "pv-result-banner--warn" : result.failed.length > 0 ? "pv-result-banner--warn" : ""}`}>
+            {result.cancelled
+              ? `已停止，已处理 ${result.processed} 个文件（剩余文件已跳过）`
+              : result.failed.length === 0
+                ? `✓ 全部完成，共 ${result.processed} 个文件 → ${result.output_folder}`
+                : `已处理 ${result.processed} 个，${result.failed.length} 个失败`}
+            {result.wic_converted > 0 &&
+              `（${result.wic_converted} 个 HEIF 已通过 WIC 转换为 JPEG）`}
             {result.skipped_compress > 0 &&
-              `（${result.skipped_compress} 个 HEIF 等格式已跳过压缩）`}
+              `（${result.skipped_compress} 个格式未安装 HEIF 扩展，已跳过压缩）`}
           </div>
           {result.failed.length > 0 && (
             <div className="sv-error" style={{ marginTop: 8 }}>

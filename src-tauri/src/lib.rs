@@ -3,6 +3,9 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use tauri::Emitter;
 
 #[derive(Serialize)]
 pub struct FileEntry {
@@ -180,6 +183,114 @@ fn is_processable_image(ext: &str) -> bool {
     )
 }
 
+/// 判断扩展名是否为 HEIF 系列格式
+#[cfg(windows)]
+fn is_heif_ext(ext: &str) -> bool {
+    matches!(ext, ".hif" | ".heic" | ".heif" | ".avif")
+}
+
+/// 通过 Windows WIC API 解码 HEIF/HIF 格式，输出 RGB 图像
+/// 需要系统安装「HEIF 图像扩展」（Microsoft Store 免费）
+/// 未安装扩展或解码失败时返回 Err，调用方应回退到直接复制
+#[cfg(windows)]
+fn decode_heif_via_wic(path: &std::path::Path) -> Result<image::RgbImage, String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::{
+        core::{Interface, PCWSTR},
+        Win32::{
+            Foundation::GENERIC_ACCESS_RIGHTS,
+            Graphics::Imaging::{
+                CLSID_WICImagingFactory, GUID_WICPixelFormat24bppBGR,
+                IWICBitmapSource, IWICFormatConverter, IWICImagingFactory,
+                WICBitmapDitherTypeNone, WICBitmapPaletteTypeMedianCut,
+                WICDecodeMetadataCacheOnDemand,
+            },
+            System::Com::{
+                CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER,
+                COINIT_MULTITHREADED,
+            },
+        },
+    };
+    unsafe {
+        // 初始化 COM（S_OK = 新初始化，S_FALSE = 已初始化，均可继续）
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+
+        // 创建 WIC 工厂
+        let factory: IWICImagingFactory =
+            CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER)
+                .map_err(|e| format!("WIC 工厂创建失败: {e}"))?;
+
+        // 将路径转为 UTF-16 宽字符串
+        let wide: Vec<u16> = path
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+
+        // 创建解码器（若未安装 HEIF 图像扩展则此处返回 Err）
+        let decoder = factory
+            .CreateDecoderFromFilename(
+                PCWSTR(wide.as_ptr()),
+                None,                                    // 不限制编解码器厂商
+                GENERIC_ACCESS_RIGHTS(0x8000_0000u32),   // GENERIC_READ
+                WICDecodeMetadataCacheOnDemand,
+            )
+            .map_err(|e| format!("WIC 解码失败（可能未安装 HEIF 图像扩展）: {e}"))?;
+
+        // 获取第一帧
+        let frame = decoder
+            .GetFrame(0)
+            .map_err(|e| format!("获取图片帧失败: {e}"))?;
+
+        // 获取宽高
+        let mut width = 0u32;
+        let mut height = 0u32;
+        frame
+            .GetSize(&mut width, &mut height)
+            .map_err(|e| format!("获取图片尺寸失败: {e}"))?;
+
+        // 创建格式转换器，目标格式为 24bpp BGR
+        let converter: IWICFormatConverter = factory
+            .CreateFormatConverter()
+            .map_err(|e| format!("创建格式转换器失败: {e}"))?;
+
+        // IWICBitmapFrameDecode 转为 IWICBitmapSource（需要 Interface trait）
+        let source: IWICBitmapSource =
+            frame.cast().map_err(|e| format!("接口转换失败: {e}"))?;
+
+        converter
+            .Initialize(
+                &source,
+                &GUID_WICPixelFormat24bppBGR,
+                WICBitmapDitherTypeNone,
+                None,
+                0.0f64,
+                WICBitmapPaletteTypeMedianCut,
+            )
+            .map_err(|e| format!("像素格式转换初始化失败: {e}"))?;
+
+        // 读取像素数据到缓冲区（CopyPixels 签名：prc, stride, &mut [u8]）
+        let stride = width * 3;
+        let buf_size = (stride * height) as usize;
+        let mut buffer = vec![0u8; buf_size];
+        converter
+            .CopyPixels(
+                std::ptr::null(),
+                stride,
+                &mut buffer,
+            )
+            .map_err(|e| format!("像素数据读取失败: {e}"))?;
+
+        // WIC 返回 BGR，转换为 RGB（image crate 需要）
+        for pixel in buffer.chunks_exact_mut(3) {
+            pixel.swap(0, 2);
+        }
+
+        image::RgbImage::from_raw(width, height, buffer)
+            .ok_or_else(|| "图像缓冲区大小不匹配".to_string())
+    }
+}
+
 #[derive(Serialize, Clone)]
 pub struct ProcessFileInfo {
     name: String,
@@ -218,12 +329,23 @@ pub struct ExecuteProcessArgs {
     steps: Vec<PipelineStepArg>,
 }
 
+/// 处理取消标志，通过 Tauri 状态共享
+pub struct CancelFlag(Arc<AtomicBool>);
+
 #[derive(Serialize)]
 pub struct ExecuteProcessResult {
     processed: u32,
     skipped_compress: u32,
+    wic_converted: u32,
     failed: Vec<String>,
     output_folder: String,
+    cancelled: bool,
+}
+
+/// 取消正在进行的处理任务
+#[tauri::command]
+fn cancel_process(state: tauri::State<CancelFlag>) {
+    state.0.store(true, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// 按 pipeline steps 依次计算输出文件名（纯函数，前后端逻辑对称）
@@ -260,6 +382,11 @@ fn compute_output_name(original: &str, index: usize, steps: &[PipelineStepArg]) 
                     }
                     // 其他可压缩格式转 .jpg
                     if compress_supported(&out_ext) && out_ext != ".png" {
+                        out_ext = ".jpg".to_string();
+                    }
+                    // HEIF 系列：WIC 解码后转 JPEG
+                    #[cfg(windows)]
+                    if is_heif_ext(&out_ext) {
                         out_ext = ".jpg".to_string();
                     }
                 }
@@ -302,40 +429,78 @@ fn scan_process(folder: String) -> Result<Vec<ProcessFileInfo>, String> {
 
 /// 按 pipeline 执行处理，输出到 output_subdir
 #[tauri::command]
-fn execute_process(args: ExecuteProcessArgs) -> Result<ExecuteProcessResult, String> {
-    use image::io::Reader as ImageReader;
-    use image::codecs::jpeg::JpegEncoder;
+async fn execute_process(app: tauri::AppHandle, state: tauri::State<'_, CancelFlag>, args: ExecuteProcessArgs) -> Result<ExecuteProcessResult, String> {
+    // 重置取消标志
+    state.0.store(false, std::sync::atomic::Ordering::Relaxed);
+    let cancel_flag = Arc::clone(&state.0);
+    tauri::async_runtime::spawn_blocking(move || {
+    use rayon::prelude::*;
+    use std::sync::{Arc, Mutex};
+    use std::sync::atomic::{AtomicU32, Ordering};
 
     let base = std::path::Path::new(&args.folder);
     let out_dir = base.join(&args.output_subdir);
     std::fs::create_dir_all(&out_dir)
         .map_err(|e| format!("无法创建输出文件夹: {}", e))?;
 
-    // 先扫描文件列表（保证与 scan_process 排序一致）
     let files = scan_process(args.folder.clone())?;
-    let active_steps: Vec<&PipelineStepArg> = args.steps.iter().filter(|s| s.enabled).collect();
+    let total = files.len() as u32;
 
-    let mut processed = 0u32;
-    let mut skipped_compress = 0u32;
-    let mut failed: Vec<String> = Vec::new();
+    // 提取 compress 配置（所有文件共用）
+    let compress_cfg: Option<CompressConfig> = args.steps.iter()
+        .find(|s| s.step_type == "compress" && s.enabled)
+        .and_then(|s| s.compress.clone());
 
-    for (index, file_info) in files.iter().enumerate() {
+    let processed     = Arc::new(AtomicU32::new(0));
+    let skipped_cnt   = Arc::new(AtomicU32::new(0));
+    let wic_cnt       = Arc::new(AtomicU32::new(0));
+    let done_cnt      = Arc::new(AtomicU32::new(0));
+    let failed: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+    files.par_iter().enumerate().for_each(|(index, file_info)| {
+        // 检查取消标志，已取消则跳过当前文件
+        if cancel_flag.load(Ordering::Relaxed) { return; }
+
+        use image::io::Reader as ImageReader;
+        use image::codecs::jpeg::JpegEncoder;
+
         let src_path = base.join(&file_info.name);
         let out_name = compute_output_name(&file_info.name, index, &args.steps);
         let dest_path = out_dir.join(&out_name);
 
-        // 找出 compress step（若存在且 enabled）
-        let compress_step = active_steps.iter()
-            .find(|s| s.step_type == "compress")
-            .and_then(|s| s.compress.as_ref());
+        let mut file_wic_converted = false;
 
         let result: Result<(), String> = (|| {
-            if let Some(cc) = compress_step {
+            if let Some(ref cc) = compress_cfg {
                 if !file_info.compress_supported {
-                    // HEIF 等不支持压缩，直接 copy
-                    std::fs::copy(&src_path, &dest_path)
-                        .map_err(|e| e.to_string())?;
-                    return Ok(());  // skipped_compress 在下面统计
+                    #[cfg(windows)]
+                    {
+                        let ext = std::path::Path::new(&file_info.name)
+                            .extension()
+                            .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
+                            .unwrap_or_default();
+                        if is_heif_ext(&ext) {
+                            match decode_heif_via_wic(&src_path) {
+                                Ok(rgb_img) => {
+                                    let stem_end = out_name.rfind('.').unwrap_or(out_name.len());
+                                    let jpg_dest = out_dir.join(format!("{}.jpg", &out_name[..stem_end]));
+                                    let mut buf = Vec::new();
+                                    JpegEncoder::new_with_quality(&mut buf, cc.jpeg_quality)
+                                        .encode_image(&rgb_img)
+                                        .map_err(|e| e.to_string())?;
+                                    std::fs::write(&jpg_dest, &buf).map_err(|e| e.to_string())?;
+                                    file_wic_converted = true;
+                                    return Ok(());
+                                }
+                                Err(_) => {
+                                    std::fs::copy(&src_path, &dest_path).map_err(|e| e.to_string())?;
+                                    return Ok(());
+                                }
+                            }
+                        }
+                    }
+                    std::fs::copy(&src_path, &dest_path).map_err(|e| e.to_string())?;
+                    return Ok(());
                 }
 
                 let dot = file_info.name.rfind('.');
@@ -344,14 +509,12 @@ fn execute_process(args: ExecuteProcessArgs) -> Result<ExecuteProcessResult, Str
                     .unwrap_or_default();
 
                 if ext == ".png" && cc.png_mode == "lossless" {
-                    // PNG 无损：重新编码为 PNG
                     let img = ImageReader::open(&src_path)
                         .map_err(|e| e.to_string())?
                         .decode()
                         .map_err(|e| e.to_string())?;
                     img.save(&dest_path).map_err(|e| e.to_string())?;
                 } else {
-                    // 其余情况全部输出为 JPEG（PNG to_jpeg / JPEG / WEBP / BMP / TIFF）
                     let quality = if ext == ".png" { cc.png_jpeg_quality } else { cc.jpeg_quality };
                     let img = ImageReader::open(&src_path)
                         .map_err(|e| e.to_string())?
@@ -359,12 +522,12 @@ fn execute_process(args: ExecuteProcessArgs) -> Result<ExecuteProcessResult, Str
                         .map_err(|e| e.to_string())?;
                     let rgb = img.to_rgb8();
                     let mut buf: Vec<u8> = Vec::new();
-                    let mut enc = JpegEncoder::new_with_quality(&mut buf, quality);
-                    enc.encode_image(&rgb).map_err(|e| e.to_string())?;
+                    JpegEncoder::new_with_quality(&mut buf, quality)
+                        .encode_image(&rgb)
+                        .map_err(|e| e.to_string())?;
                     std::fs::write(&dest_path, &buf).map_err(|e| e.to_string())?;
                 }
             } else {
-                // 没有 compress 步骤：直接 copy（rename 已体现在 dest_path 的文件名中）
                 std::fs::copy(&src_path, &dest_path).map_err(|e| e.to_string())?;
             }
             Ok(())
@@ -372,23 +535,37 @@ fn execute_process(args: ExecuteProcessArgs) -> Result<ExecuteProcessResult, Str
 
         match result {
             Ok(_) => {
-                processed += 1;
-                if compress_step.is_some() && !file_info.compress_supported {
-                    skipped_compress += 1;
+                processed.fetch_add(1, Ordering::Relaxed);
+                if file_wic_converted {
+                    wic_cnt.fetch_add(1, Ordering::Relaxed);
+                } else if compress_cfg.is_some() && !file_info.compress_supported {
+                    skipped_cnt.fetch_add(1, Ordering::Relaxed);
                 }
             }
             Err(_) => {
-                failed.push(file_info.name.clone());
+                failed.lock().unwrap().push(file_info.name.clone());
             }
         }
-    }
 
+        let current = done_cnt.fetch_add(1, Ordering::Relaxed) + 1;
+        let _ = app.emit("process-progress", serde_json::json!({
+            "current": current,
+            "total": total,
+        }));
+    });
+
+    let failed = Arc::try_unwrap(failed).unwrap().into_inner().unwrap();
+
+    let cancelled = cancel_flag.load(Ordering::Relaxed);
     Ok(ExecuteProcessResult {
-        processed,
-        skipped_compress,
+        processed:       processed.load(Ordering::Relaxed),
+        skipped_compress: skipped_cnt.load(Ordering::Relaxed),
+        wic_converted:   wic_cnt.load(Ordering::Relaxed),
         failed,
         output_folder: out_dir.to_string_lossy().to_string(),
+        cancelled,
     })
+    }).await.map_err(|e| e.to_string())?
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -396,6 +573,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .manage(CancelFlag(Arc::new(AtomicBool::new(false))))
     .invoke_handler(tauri::generate_handler![
             scan_folder,
             delete_to_trash,
@@ -404,6 +582,7 @@ pub fn run() {
             execute_classify,
             scan_process,
             execute_process,
+            cancel_process,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
