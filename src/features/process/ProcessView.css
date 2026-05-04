@@ -1,0 +1,319 @@
+.pv-root {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 32px 28px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 标题区 */
+.pv-header { margin-bottom: 4px; }
+
+.pv-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+}
+
+.pv-subtitle {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* 通用卡片 */
+.pv-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 文件夹输入 */
+.pv-folder-row,
+.pv-output-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.pv-output-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.pv-input {
+  flex: 1;
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  transition: border-color 0.15s;
+}
+.pv-input:focus { border-color: var(--accent); outline: none; }
+.pv-input::placeholder { color: var(--text-tertiary); font-family: var(--font-sans); }
+
+.pv-input--sm { max-width: 200px; font-size: 13px; }
+
+/* 模块卡片 */
+.pv-module-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.pv-module-card--on { border-color: var(--accent); }
+
+.pv-module-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+}
+
+.pv-module-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* 拨动开关 */
+.pv-toggle-btn {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  border: none;
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  flex-shrink: 0;
+}
+.pv-toggle-btn--on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.pv-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s;
+  display: block;
+}
+.pv-toggle-btn--on .pv-toggle-knob {
+  transform: translateX(18px);
+}
+
+.pv-module-body {
+  padding: 0 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* 字段组 */
+.pv-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pv-field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pv-inline-fields {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.pv-inline-fields .pv-field-group { min-width: 110px; }
+
+/* 单选组 */
+.pv-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pv-radio-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.pv-radio-item input[type="radio"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.pv-radio-item:hover { color: var(--text-primary); }
+
+/* 滑动条 */
+.pv-slider {
+  width: 100%;
+  max-width: 360px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.pv-slider-hints {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  max-width: 360px;
+}
+
+/* 压缩注意 */
+.pv-compress-note {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  background: var(--bg-surface-2);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+}
+
+/* 重命名预览 */
+.pv-rename-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pv-rename-preview-names {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--accent);
+}
+
+/* 操作行 */
+.pv-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.pv-warn {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+/* 节标签 */
+.pv-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+/* 预览表格 */
+.pv-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.pv-table-head,
+.pv-table-row {
+  display: grid;
+  grid-template-columns: 2fr 80px 2fr 80px;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 12px;
+}
+
+.pv-table-head {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  background: var(--bg-surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.pv-table-row {
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.pv-table-row:last-child { border-bottom: none; }
+.pv-table-row:hover { background: var(--bg-surface-2); }
+
+.pv-cell-mono {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+.pv-cell-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pv-cell-size {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.pv-cell-note {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+/* 空状态 */
+.pv-empty {
+  padding: 24px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-tertiary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+/* 结果 Banner */
+.pv-result-banner {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.25);
+  color: #34d399;
+}
+.pv-result-banner--warn {
+  background: var(--danger-subtle);
+  border-color: rgba(248, 113, 113, 0.25);
+  color: var(--danger);
+}

@@ -2,9 +2,10 @@ import { useState } from "react";
 import NavSidebar from "./components/NavSidebar";
 import SyncView from "./features/sync/SyncView";
 import ClassifyView from "./features/classify/ClassifyView";
+import ProcessView from "./features/process/ProcessView";
 import "./App.css";
 
-type ViewId = "sync" | "classify";
+type ViewId = "sync" | "classify" | "process";
 
 function App() {
   const [currentView, setCurrentView] = useState<ViewId>("sync");
@@ -18,6 +19,7 @@ function App() {
       <main className="app-content">
         {currentView === "sync" && <SyncView />}
         {currentView === "classify" && <ClassifyView />}
+        {currentView === "process" && <ProcessView />}
       </main>
     </div>
   );
