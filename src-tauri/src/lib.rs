@@ -1,4 +1,5 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -163,14 +164,14 @@ fn execute_classify(folder: String) -> Result<ExecuteClassifyResult, String> {
     Ok(ExecuteClassifyResult { categories, failed })
 }
 
-// ===== 图片批处理功能 =====
+// ===== 图片处理 Pipeline =====
 
-/// 判断扩展名是否可被 image crate 压缩
+/// 扩展名是否支持用 image crate 压缩
 fn compress_supported(ext: &str) -> bool {
     matches!(ext, ".jpg" | ".jpeg" | ".png" | ".webp" | ".bmp" | ".tif" | ".tiff")
 }
 
-/// 判断扩展名是否为可处理的图片（含不可压缩的 HEIF）
+/// 扩展名是否为可处理的图片（包含不支持压缩的 HEIF）
 fn is_processable_image(ext: &str) -> bool {
     matches!(
         ext,
@@ -179,37 +180,42 @@ fn is_processable_image(ext: &str) -> bool {
     )
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct ProcessFileInfo {
     name: String,
     size_bytes: u64,
     compress_supported: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct RenameConfig {
-    /// "prefix_seq" | "keep_suffix" | "custom_seq"
-    pattern: String,
+    pattern: String,   // "prefix_seq" | "keep_suffix" | "custom_seq"
     prefix: String,
     suffix: String,
     start_num: u32,
     pad_digits: u8,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct CompressConfig {
     jpeg_quality: u8,
-    /// "lossless" | "to_jpeg"
-    png_mode: String,
+    png_mode: String,        // "lossless" | "to_jpeg"
     png_jpeg_quality: u8,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct PipelineStepArg {
+    step_type: String,              // "rename" | "compress"
+    enabled: bool,
+    rename: Option<RenameConfig>,
+    compress: Option<CompressConfig>,
 }
 
 #[derive(Deserialize)]
 pub struct ExecuteProcessArgs {
     folder: String,
     output_subdir: String,
-    rename: Option<RenameConfig>,
-    compress: Option<CompressConfig>,
+    steps: Vec<PipelineStepArg>,
 }
 
 #[derive(Serialize)]
@@ -220,148 +226,160 @@ pub struct ExecuteProcessResult {
     output_folder: String,
 }
 
-/// 扫描文件夹，返回可处理的图片文件信息
+/// 按 pipeline steps 依次计算输出文件名（纯函数，前后端逻辑对称）
+fn compute_output_name(original: &str, index: usize, steps: &[PipelineStepArg]) -> String {
+    let dot = original.rfind('.');
+    let mut stem = if let Some(d) = dot { original[..d].to_string() } else { original.to_string() };
+    let ext_raw = if let Some(d) = dot { original[d..].to_lowercase() } else { String::new() };
+    let mut out_ext = ext_raw.clone();
+
+    for step in steps {
+        if !step.enabled {
+            continue;
+        }
+        match step.step_type.as_str() {
+            "rename" => {
+                if let Some(rc) = &step.rename {
+                    let num = format!(
+                        "{:0>width$}",
+                        rc.start_num as usize + index,
+                        width = rc.pad_digits as usize
+                    );
+                    stem = match rc.pattern.as_str() {
+                        "prefix_seq"  => format!("{}{}", rc.prefix, num),
+                        "keep_suffix" => format!("{}{}", stem, rc.suffix),
+                        "custom_seq"  => format!("{}{}{}", rc.prefix, num, rc.suffix),
+                        _             => stem,
+                    };
+                }
+            }
+            "compress" => {
+                if let Some(cc) = &step.compress {
+                    if out_ext == ".png" && cc.png_mode == "to_jpeg" {
+                        out_ext = ".jpg".to_string();
+                    }
+                    // 其他可压缩格式转 .jpg
+                    if compress_supported(&out_ext) && out_ext != ".png" {
+                        out_ext = ".jpg".to_string();
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    format!("{}{}", stem, out_ext)
+}
+
+/// 扫描文件夹，返回可处理图片信息列表
 #[tauri::command]
 fn scan_process(folder: String) -> Result<Vec<ProcessFileInfo>, String> {
-    let path = Path::new(&folder);
-    let dir = fs::read_dir(path).map_err(|e| format!("无法读取文件夹: {}", e))?;
-
+    let path = std::path::Path::new(&folder);
+    let dir = std::fs::read_dir(path).map_err(|e| format!("无法读取文件夹: {}", e))?;
     let mut files: Vec<ProcessFileInfo> = Vec::new();
     for entry in dir {
         let entry = entry.map_err(|e| e.to_string())?;
-        let metadata = entry.metadata().map_err(|e| e.to_string())?;
-        if !metadata.is_file() {
+        let meta = entry.metadata().map_err(|e| e.to_string())?;
+        if !meta.is_file() {
             continue;
         }
         let name = entry.file_name().to_string_lossy().to_string();
-        let ext = Path::new(&name)
+        let ext = std::path::Path::new(&name)
             .extension()
             .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
             .unwrap_or_default();
-        if is_processable_image(&ext) {
-            files.push(ProcessFileInfo {
-                name,
-                size_bytes: metadata.len(),
-                compress_supported: compress_supported(&ext),
-            });
+        if !is_processable_image(&ext) {
+            continue;
         }
+        files.push(ProcessFileInfo {
+            name,
+            size_bytes: meta.len(),
+            compress_supported: compress_supported(&ext),
+        });
     }
     files.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(files)
 }
 
-/// 计算输出文件名
-fn compute_output_name(
-    original: &str,
-    index: usize,
-    rename: &Option<RenameConfig>,
-    compress: &Option<CompressConfig>,
-) -> String {
-    let orig_path = Path::new(original);
-    let stem = orig_path.file_stem().unwrap_or_default().to_string_lossy();
-    let ext_lower = orig_path
-        .extension()
-        .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
-        .unwrap_or_default();
-
-    // 计算输出扩展名（压缩模块可能把 .png 转为 .jpg）
-    let out_ext = if let Some(c) = compress {
-        if ext_lower == ".png" && c.png_mode == "to_jpeg" {
-            ".jpg".to_string()
-        } else {
-            ext_lower.clone()
-        }
-    } else {
-        ext_lower.clone()
-    };
-
-    // 计算输出文件名主干
-    let out_stem = if let Some(r) = rename {
-        let pad = r.pad_digits as usize;
-        let num = r.start_num as usize + index;
-        match r.pattern.as_str() {
-            "prefix_seq" => format!("{}{:0>pad$}", r.prefix, num, pad = pad),
-            "keep_suffix" => format!("{}{}", stem, r.suffix),
-            "custom_seq" => format!("{}{:0>pad$}{}", r.prefix, num, r.suffix, pad = pad),
-            _ => stem.to_string(),
-        }
-    } else {
-        stem.to_string()
-    };
-
-    format!("{}{}", out_stem, out_ext)
-}
-
-/// 执行图片批处理（重命名 + 压缩），输出到子文件夹
+/// 按 pipeline 执行处理，输出到 output_subdir
 #[tauri::command]
 fn execute_process(args: ExecuteProcessArgs) -> Result<ExecuteProcessResult, String> {
-    let folder_path = Path::new(&args.folder);
-    let output_subdir = if args.output_subdir.trim().is_empty() {
-        "processed"
-    } else {
-        args.output_subdir.trim()
-    };
-    let out_dir = folder_path.join(output_subdir);
-    fs::create_dir_all(&out_dir)
-        .map_err(|e| format!("创建输出文件夹失败: {}", e))?;
+    use image::io::Reader as ImageReader;
+    use image::codecs::jpeg::JpegEncoder;
 
-    // 扫描文件列表（已排序）
-    let scan = scan_process(args.folder.clone())?;
+    let base = std::path::Path::new(&args.folder);
+    let out_dir = base.join(&args.output_subdir);
+    std::fs::create_dir_all(&out_dir)
+        .map_err(|e| format!("无法创建输出文件夹: {}", e))?;
 
-    let mut processed: u32 = 0;
-    let mut skipped_compress: u32 = 0;
+    // 先扫描文件列表（保证与 scan_process 排序一致）
+    let files = scan_process(args.folder.clone())?;
+    let active_steps: Vec<&PipelineStepArg> = args.steps.iter().filter(|s| s.enabled).collect();
+
+    let mut processed = 0u32;
+    let mut skipped_compress = 0u32;
     let mut failed: Vec<String> = Vec::new();
 
-    for (idx, info) in scan.iter().enumerate() {
-        let src = folder_path.join(&info.name);
-        let out_name = compute_output_name(&info.name, idx, &args.rename, &args.compress);
-        let dest = out_dir.join(&out_name);
+    for (index, file_info) in files.iter().enumerate() {
+        let src_path = base.join(&file_info.name);
+        let out_name = compute_output_name(&file_info.name, index, &args.steps);
+        let dest_path = out_dir.join(&out_name);
 
-        let ext_lower = Path::new(&info.name)
-            .extension()
-            .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
-            .unwrap_or_default();
+        // 找出 compress step（若存在且 enabled）
+        let compress_step = active_steps.iter()
+            .find(|s| s.step_type == "compress")
+            .and_then(|s| s.compress.as_ref());
 
-        let do_compress = args.compress.is_some() && info.compress_supported;
+        let result: Result<(), String> = (|| {
+            if let Some(cc) = compress_step {
+                if !file_info.compress_supported {
+                    // HEIF 等不支持压缩，直接 copy
+                    std::fs::copy(&src_path, &dest_path)
+                        .map_err(|e| e.to_string())?;
+                    return Ok(());  // skipped_compress 在下面统计
+                }
 
-        let ok = if do_compress {
-            let compress_cfg = args.compress.as_ref().unwrap();
-            match image::open(&src) {
-                Err(_) => false,
-                Ok(img) => {
-                    let is_png_lossless = ext_lower == ".png" && compress_cfg.png_mode != "to_jpeg";
-                    if is_png_lossless {
-                        img.save(&dest).is_ok()
-                    } else {
-                        // JPEG 输出（JPEG / WebP / BMP / TIFF 原格式 → JPEG，PNG → JPEG）
-                        let quality = if ext_lower == ".png" {
-                            compress_cfg.png_jpeg_quality
-                        } else {
-                            compress_cfg.jpeg_quality
-                        };
-                        let mut buf: Vec<u8> = Vec::new();
-                        let encoder =
-                            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, quality);
-                        if img.write_with_encoder(encoder).is_ok() {
-                            fs::write(&dest, &buf).is_ok()
-                        } else {
-                            false
-                        }
-                    }
+                let dot = file_info.name.rfind('.');
+                let ext = dot
+                    .map(|d| file_info.name[d..].to_lowercase())
+                    .unwrap_or_default();
+
+                if ext == ".png" && cc.png_mode == "lossless" {
+                    // PNG 无损：重新编码为 PNG
+                    let img = ImageReader::open(&src_path)
+                        .map_err(|e| e.to_string())?
+                        .decode()
+                        .map_err(|e| e.to_string())?;
+                    img.save(&dest_path).map_err(|e| e.to_string())?;
+                } else {
+                    // 其余情况全部输出为 JPEG（PNG to_jpeg / JPEG / WEBP / BMP / TIFF）
+                    let quality = if ext == ".png" { cc.png_jpeg_quality } else { cc.jpeg_quality };
+                    let img = ImageReader::open(&src_path)
+                        .map_err(|e| e.to_string())?
+                        .decode()
+                        .map_err(|e| e.to_string())?;
+                    let rgb = img.to_rgb8();
+                    let mut buf: Vec<u8> = Vec::new();
+                    let mut enc = JpegEncoder::new_with_quality(&mut buf, quality);
+                    enc.encode_image(&rgb).map_err(|e| e.to_string())?;
+                    std::fs::write(&dest_path, &buf).map_err(|e| e.to_string())?;
+                }
+            } else {
+                // 没有 compress 步骤：直接 copy（rename 已体现在 dest_path 的文件名中）
+                std::fs::copy(&src_path, &dest_path).map_err(|e| e.to_string())?;
+            }
+            Ok(())
+        })();
+
+        match result {
+            Ok(_) => {
+                processed += 1;
+                if compress_step.is_some() && !file_info.compress_supported {
+                    skipped_compress += 1;
                 }
             }
-        } else {
-            // 不压缩或格式不支持：直接复制
-            if !info.compress_supported && args.compress.is_some() {
-                skipped_compress += 1;
+            Err(_) => {
+                failed.push(file_info.name.clone());
             }
-            fs::copy(&src, &dest).is_ok()
-        };
-
-        if ok {
-            processed += 1;
-        } else {
-            failed.push(info.name.clone());
         }
     }
 
