@@ -397,6 +397,7 @@ const STEP_LABELS: Record<StepType, string> = {
 export default function ProcessView() {
   const [folder, setFolder] = useState("");
   const [outputSubdir, setOutputSubdir] = useState("processed");
+  const [inPlace, setInPlace] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [files, setFiles] = useState<ProcessFileInfo[]>([]);
   const [result, setResult] = useState<ExecuteProcessResult | null>(null);
@@ -513,6 +514,7 @@ export default function ProcessView() {
         args: {
           folder,
           output_subdir: outputSubdir || "processed",
+          in_place: inPlace,
           steps: steps.map(s => ({
             step_type: s.step_type,
             enabled: s.enabled,
@@ -558,6 +560,20 @@ export default function ProcessView() {
             浏览…
           </button>
         </div>
+        <div className="pv-output-mode-row">
+          <span className="pv-output-label">输出模式：</span>
+          <label className="pv-radio-item">
+            <input type="radio" name="output-mode" checked={!inPlace}
+              onChange={() => setInPlace(false)} />
+            <span>复制到子文件夹</span>
+          </label>
+          <label className="pv-radio-item">
+            <input type="radio" name="output-mode" checked={inPlace}
+              onChange={() => setInPlace(true)} />
+            <span>原地修改（覆盖原文件）</span>
+          </label>
+        </div>
+        {!inPlace && (
         <div className="pv-output-row">
           <span className="pv-output-label">输出子文件夹：</span>
           <input
@@ -567,6 +583,10 @@ export default function ProcessView() {
             placeholder="processed"
           />
         </div>
+        )}
+        {inPlace && (
+          <div className="pv-warn pv-warn--inline">⚠️ 原地模式会直接修改原始文件，分级请先备份</div>
+        )}
       </div>
 
       {/* Pipeline 步骤列表 */}
@@ -656,7 +676,7 @@ export default function ProcessView() {
       {(phase === "scanned" || phase === "executing") && files.length > 0 && (
         <div className="pv-card">
           <div className="pv-section-label">
-            {files.length} 个文件 · 输出 → {outputSubdir || "processed"}/
+            {files.length} 个文件 · {inPlace ? "原地修改" : `输出 → ${outputSubdir || "processed"}/`}
           </div>
           <div className="pv-table">
             <div className="pv-table-head" style={{ gridTemplateColumns: hasCompress ? "2fr 70px 90px 2fr 80px" : "2fr 80px 2fr 80px" }}>
@@ -705,7 +725,7 @@ export default function ProcessView() {
             {result.cancelled
               ? `已停止，已处理 ${result.processed} 个文件（剩余文件已跳过）`
               : result.failed.length === 0
-                ? `✓ 全部完成，共 ${result.processed} 个文件 → ${result.output_folder}`
+                ? `✓ 全部完成，共 ${result.processed} 个文件${inPlace ? "（原地修改）" : ` → ${result.output_folder}`}`
                 : `已处理 ${result.processed} 个，${result.failed.length} 个失败`}
             {result.wic_converted > 0 &&
               `（${result.wic_converted} 个 HEIF 已通过 WIC 转换为 JPEG）`}

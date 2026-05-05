@@ -334,6 +334,7 @@ pub struct PipelineStepArg {
 pub struct ExecuteProcessArgs {
     folder: String,
     output_subdir: String,
+    in_place: bool,
     steps: Vec<PipelineStepArg>,
 }
 
@@ -478,9 +479,14 @@ async fn execute_process(app: tauri::AppHandle, state: tauri::State<'_, CancelFl
     use std::sync::atomic::{AtomicU32, Ordering};
 
     let base = std::path::Path::new(&args.folder);
-    let out_dir = base.join(&args.output_subdir);
-    std::fs::create_dir_all(&out_dir)
-        .map_err(|e| format!("无法创建输出文件夹: {}", e))?;
+    let out_dir = if args.in_place {
+        base.to_path_buf()
+    } else {
+        let d = base.join(&args.output_subdir);
+        std::fs::create_dir_all(&d)
+            .map_err(|e| format!("无法创建输出文件夹: {}", e))?;
+        d
+    };;
 
     let files = scan_process(args.folder.clone())?;
     let total = files.len() as u32;
@@ -493,6 +499,7 @@ async fn execute_process(app: tauri::AppHandle, state: tauri::State<'_, CancelFl
     let date_cfg: Option<DateConfig> = args.steps.iter()
         .find(|s| s.step_type == "set_date" && s.enabled)
         .and_then(|s| s.date.clone());
+    let in_place = args.in_place;
 
     let processed     = Arc::new(AtomicU32::new(0));
     let skipped_cnt   = Arc::new(AtomicU32::new(0));
@@ -571,7 +578,10 @@ async fn execute_process(app: tauri::AppHandle, state: tauri::State<'_, CancelFl
                     std::fs::write(&dest_path, &buf).map_err(|e| e.to_string())?;
                 }
             } else {
-                std::fs::copy(&src_path, &dest_path).map_err(|e| e.to_string())?;
+                // 无压缩步骤：src==dest(原地无重命名)则跳过 copy；否则复制
+                if src_path != dest_path {
+                    std::fs::copy(&src_path, &dest_path).map_err(|e| e.to_string())?;
+                }
             }
             Ok(dest_path)
         })();
@@ -586,6 +596,10 @@ async fn execute_process(app: tauri::AppHandle, state: tauri::State<'_, CancelFl
                 }
                 if let Some(ref dc) = date_cfg {
                     apply_exif_date(&actual_path, &src_path, dc);
+                }
+                // 原地模式：文件被重命名/转换时删除原文件
+                if in_place && actual_path != src_path {
+                    let _ = std::fs::remove_file(&src_path);
                 }
             }
             Err(_) => {
