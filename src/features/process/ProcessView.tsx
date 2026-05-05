@@ -26,7 +26,13 @@ export interface CompressConfig {
   png_jpeg_quality: number;
 }
 
-export type StepType = "rename" | "compress";
+export interface DateConfig {
+  year: number;
+  month: number;
+  day: number;
+}
+
+export type StepType = "rename" | "compress" | "set_date";
 
 export interface PipelineStep {
   id: string;               // 前端唯一 id（用于 key + 排序）
@@ -34,6 +40,7 @@ export interface PipelineStep {
   enabled: boolean;
   rename?: RenameConfig;
   compress?: CompressConfig;
+  date?: DateConfig;
 }
 
 interface ExecuteProcessResult {
@@ -60,6 +67,11 @@ const DEFAULT_COMPRESS: CompressConfig = {
   png_mode: "lossless",
   png_jpeg_quality: 85,
 };
+
+function todayDate(): DateConfig {
+  const now = new Date();
+  return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
+}
 
 // ─── 工具函数 ────────────────────────────────────────────
 
@@ -155,14 +167,19 @@ interface StepCardProps {
 
 function StepCard({ step, index, total, previewSample, onChange, onMove, onRemove }: StepCardProps) {
   const isRename = step.step_type === "rename";
+  const isDate = step.step_type === "set_date";
   const rc = step.rename ?? { ...DEFAULT_RENAME };
   const cc = step.compress ?? { ...DEFAULT_COMPRESS };
+  const dc = step.date ?? todayDate();
 
   function setRC(patch: Partial<RenameConfig>) {
     onChange({ ...step, rename: { ...rc, ...patch } });
   }
   function setCC(patch: Partial<CompressConfig>) {
     onChange({ ...step, compress: { ...cc, ...patch } });
+  }
+  function setDC(patch: Partial<DateConfig>) {
+    onChange({ ...step, date: { ...dc, ...patch } });
   }
 
   return (
@@ -171,7 +188,7 @@ function StepCard({ step, index, total, previewSample, onChange, onMove, onRemov
       <div className="pv-step-header">
         <span className="pv-step-index">{index + 1}</span>
         <span className="pv-step-title">
-          {isRename ? "重命名" : "压缩"}
+          {isRename ? "重命名" : isDate ? "修改日期" : "压缩"}
         </span>
         <div className="pv-step-actions">
           <button
@@ -201,7 +218,39 @@ function StepCard({ step, index, total, previewSample, onChange, onMove, onRemov
       {/* 配置体（仅 enabled 时展开） */}
       {step.enabled && (
         <div className="pv-step-body">
-          {isRename ? (
+          {isDate ? (
+            <>
+              <div className="pv-field-group">
+                <label className="pv-field-label">目标日期（只修改年月日，时分秒保留原始 EXIF）</label>
+                <div className="pv-date-row">
+                  <input
+                    className="pv-input pv-date-input"
+                    type="number" min={1900} max={2099}
+                    value={dc.year}
+                    onChange={e => setDC({ year: Math.min(2099, Math.max(1900, parseInt(e.target.value) || dc.year)) })}
+                  />
+                  <span className="pv-date-sep">年</span>
+                  <input
+                    className="pv-input pv-date-input pv-date-input--sm"
+                    type="number" min={1} max={12}
+                    value={dc.month}
+                    onChange={e => setDC({ month: Math.min(12, Math.max(1, parseInt(e.target.value) || dc.month)) })}
+                  />
+                  <span className="pv-date-sep">月</span>
+                  <input
+                    className="pv-input pv-date-input pv-date-input--sm"
+                    type="number" min={1} max={31}
+                    value={dc.day}
+                    onChange={e => setDC({ day: Math.min(31, Math.max(1, parseInt(e.target.value) || dc.day)) })}
+                  />
+                  <span className="pv-date-sep">日</span>
+                </div>
+              </div>
+              <div className="pv-compress-note">
+                修改 JPEG / TIFF / RAW 等支持 EXIF 的格式；PNG / BMP 等不含 EXIF 的格式会静默跳过
+              </div>
+            </>
+          ) : isRename ? (
             <>
               {/* 命名模式 */}
               <div className="pv-field-group">
@@ -342,6 +391,7 @@ type Phase = "idle" | "scanning" | "scanned" | "executing" | "done";
 const STEP_LABELS: Record<StepType, string> = {
   rename: "重命名",
   compress: "压缩",
+  set_date: "修改日期",
 };
 
 export default function ProcessView() {
@@ -386,7 +436,9 @@ export default function ProcessView() {
     const newStep: PipelineStep =
       type === "rename"
         ? { id: uid(), step_type: "rename",   enabled: true, rename:   { ...DEFAULT_RENAME } }
-        : { id: uid(), step_type: "compress", enabled: true, compress: { ...DEFAULT_COMPRESS } };
+        : type === "set_date"
+          ? { id: uid(), step_type: "set_date", enabled: true, date: todayDate() }
+          : { id: uid(), step_type: "compress", enabled: true, compress: { ...DEFAULT_COMPRESS } };
     setSteps(prev => [...prev, newStep]);
   }
 
@@ -466,6 +518,7 @@ export default function ProcessView() {
             enabled: s.enabled,
             rename: s.rename ?? null,
             compress: s.compress ?? null,
+            date: s.date ?? null,
           })),
         },
       });
@@ -521,7 +574,7 @@ export default function ProcessView() {
         <div className="pv-pipeline-header">
           <span className="pv-section-label">处理流水线</span>
           <div className="pv-add-step-row">
-            {(["rename", "compress"] as StepType[]).map(type => (
+            {(["rename", "compress", "set_date"] as StepType[]).map(type => (
               <button
                 key={type}
                 className="sv-btn sv-btn--ghost pv-add-btn"

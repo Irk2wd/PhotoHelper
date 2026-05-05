@@ -62,6 +62,7 @@
 |------|------|
 | 重命名 | 批量按规则重命名：前缀序号、保留原名加后缀、自定义前缀+序号+后缀，可设置起始编号与补零位数 |
 | 压缩 | JPEG/WEBP/BMP/TIFF → 指定质量的 JPEG；PNG → 无损重编码或转 JPEG |
+| **修改日期** | 统一修改 EXIF 日期（DateTimeOriginal / ModifyDate / CreateDate），只改年月日，时分秒保留原始照片记录；JPEG / TIFF / RAW 等支持 EXIF 的格式有效，PNG / BMP 等格式会静默跳过 |
 
 **执行时功能**
 

@@ -418,3 +418,25 @@
   font-size: 12px;
   flex-shrink: 0;
 }
+
+/* 日期步骤 */
+.pv-date-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pv-date-input {
+  width: 76px;
+  text-align: center;
+}
+
+.pv-date-input--sm {
+  width: 52px;
+}
+
+.pv-date-sep {
+  font-size: 13px;
+  color: var(--text-muted);
+}

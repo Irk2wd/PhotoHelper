@@ -315,11 +315,19 @@ pub struct CompressConfig {
 }
 
 #[derive(Deserialize, Clone)]
+pub struct DateConfig {
+    year: u16,
+    month: u8,
+    day: u8,
+}
+
+#[derive(Deserialize, Clone)]
 pub struct PipelineStepArg {
-    step_type: String,              // "rename" | "compress"
+    step_type: String,              // "rename" | "compress" | "set_date"
     enabled: bool,
     rename: Option<RenameConfig>,
     compress: Option<CompressConfig>,
+    date: Option<DateConfig>,
 }
 
 #[derive(Deserialize)]
@@ -397,6 +405,37 @@ fn compute_output_name(original: &str, index: usize, steps: &[PipelineStepArg]) 
     format!("{}{}", stem, out_ext)
 }
 
+/// 从图片文件的 EXIF 中提取时间部分（HH:MM:SS），失败时返回 "00:00:00"
+fn read_exif_time(path: &std::path::Path) -> String {
+    use little_exif::metadata::Metadata;
+    use little_exif::exif_tag::ExifTag;
+    let Ok(metadata) = Metadata::new_from_path(path) else { return "00:00:00".to_string() };
+    for tag in metadata.data() {
+        if let ExifTag::DateTimeOriginal(s) = tag {
+            if s.len() >= 19 { return s[11..19].to_string(); }
+        }
+    }
+    for tag in metadata.data() {
+        if let ExifTag::ModifyDate(s) = tag {
+            if s.len() >= 19 { return s[11..19].to_string(); }
+        }
+    }
+    "00:00:00".to_string()
+}
+
+/// 将 DateTimeOriginal / DateTime / DateTimeDigitized 的年月日改为 dc 指定值，时分秒保持 src 原始值
+fn apply_exif_date(dest: &std::path::Path, src: &std::path::Path, dc: &DateConfig) {
+    use little_exif::metadata::Metadata;
+    use little_exif::exif_tag::ExifTag;
+    let time = read_exif_time(src);
+    let date_str = format!("{:04}:{:02}:{:02} {}", dc.year, dc.month, dc.day, time);
+    let Ok(mut metadata) = Metadata::new_from_path(dest) else { return };
+    metadata.set_tag(ExifTag::DateTimeOriginal(date_str.clone()));
+    metadata.set_tag(ExifTag::ModifyDate(date_str.clone()));
+    metadata.set_tag(ExifTag::CreateDate(date_str));
+    let _ = metadata.write_to_file(dest);
+}
+
 /// 扫描文件夹，返回可处理图片信息列表
 #[tauri::command]
 fn scan_process(folder: String) -> Result<Vec<ProcessFileInfo>, String> {
@@ -450,6 +489,10 @@ async fn execute_process(app: tauri::AppHandle, state: tauri::State<'_, CancelFl
     let compress_cfg: Option<CompressConfig> = args.steps.iter()
         .find(|s| s.step_type == "compress" && s.enabled)
         .and_then(|s| s.compress.clone());
+    // 提取 set_date 配置
+    let date_cfg: Option<DateConfig> = args.steps.iter()
+        .find(|s| s.step_type == "set_date" && s.enabled)
+        .and_then(|s| s.date.clone());
 
     let processed     = Arc::new(AtomicU32::new(0));
     let skipped_cnt   = Arc::new(AtomicU32::new(0));
@@ -470,7 +513,7 @@ async fn execute_process(app: tauri::AppHandle, state: tauri::State<'_, CancelFl
 
         let mut file_wic_converted = false;
 
-        let result: Result<(), String> = (|| {
+        let result: Result<std::path::PathBuf, String> = (|| {
             if let Some(ref cc) = compress_cfg {
                 if !file_info.compress_supported {
                     #[cfg(windows)]
@@ -490,17 +533,17 @@ async fn execute_process(app: tauri::AppHandle, state: tauri::State<'_, CancelFl
                                         .map_err(|e| e.to_string())?;
                                     std::fs::write(&jpg_dest, &buf).map_err(|e| e.to_string())?;
                                     file_wic_converted = true;
-                                    return Ok(());
+                                    return Ok(jpg_dest);
                                 }
                                 Err(_) => {
                                     std::fs::copy(&src_path, &dest_path).map_err(|e| e.to_string())?;
-                                    return Ok(());
+                                    return Ok(dest_path.clone());
                                 }
                             }
                         }
                     }
                     std::fs::copy(&src_path, &dest_path).map_err(|e| e.to_string())?;
-                    return Ok(());
+                    return Ok(dest_path.clone());
                 }
 
                 let dot = file_info.name.rfind('.');
@@ -530,16 +573,19 @@ async fn execute_process(app: tauri::AppHandle, state: tauri::State<'_, CancelFl
             } else {
                 std::fs::copy(&src_path, &dest_path).map_err(|e| e.to_string())?;
             }
-            Ok(())
+            Ok(dest_path)
         })();
 
         match result {
-            Ok(_) => {
+            Ok(actual_path) => {
                 processed.fetch_add(1, Ordering::Relaxed);
                 if file_wic_converted {
                     wic_cnt.fetch_add(1, Ordering::Relaxed);
                 } else if compress_cfg.is_some() && !file_info.compress_supported {
                     skipped_cnt.fetch_add(1, Ordering::Relaxed);
+                }
+                if let Some(ref dc) = date_cfg {
+                    apply_exif_date(&actual_path, &src_path, dc);
                 }
             }
             Err(_) => {
