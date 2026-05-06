@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <title>PhotoHelper Transfer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f2f2f7; color: #1c1c1e; min-height: 100dvh;
+    }
+
+    /* Header */
+    header {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      padding: 10px 16px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 0.5px solid rgba(0,0,0,0.18);
+    }
+    header h1 { font-size: 17px; font-weight: 600; }
+    #count-label { font-size: 13px; color: #8e8e93; }
+    #select-all-btn {
+      font-size: 15px; color: #007aff; background: none; border: none;
+      cursor: pointer; padding: 4px; font-family: inherit;
+    }
+
+    /* iOS tip banner */
+    #ios-tip {
+      display: none; margin: 8px; padding: 10px 14px;
+      background: #e8f5fd; border: 1px solid #90c8f7; border-radius: 10px;
+      font-size: 13px; color: #0353a4; line-height: 1.6;
+    }
+
+    /* Grid */
+    #grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 2px; padding: 2px; padding-bottom: 120px;
+    }
+    .photo-item {
+      position: relative; aspect-ratio: 1; overflow: hidden;
+      cursor: pointer; background: #e5e5ea;
+    }
+    .photo-item img { width: 100%; height: 100%; object-fit: cover; display: block; transition: opacity 0.15s; }
+    .photo-item .check-ring {
+      position: absolute; top: 5px; right: 5px; width: 22px; height: 22px;
+      border-radius: 50%; border: 2px solid rgba(255,255,255,0.85);
+      background: rgba(0,0,0,0.12);
+      display: flex; align-items: center; justify-content: center; pointer-events: none;
+    }
+    .photo-item.selected .check-ring { background: #007aff; border-color: #007aff; }
+    .photo-item.selected .check-ring::after {
+      content: ''; width: 5px; height: 9px;
+      border-right: 2px solid white; border-bottom: 2px solid white;
+      transform: rotate(40deg) translate(-1px, -1px);
+    }
+    .photo-item.selected::after {
+      content: ''; position: absolute; inset: 0;
+      border: 3px solid #007aff; pointer-events: none;
+    }
+
+    /* State screens */
+    .state-screen {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 55vh; gap: 14px; padding: 40px 24px; color: #8e8e93; font-size: 15px;
+    }
+    .spinner {
+      width: 34px; height: 34px; border: 3px solid #e5e5ea; border-top-color: #007aff;
+      border-radius: 50%; animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Footer */
+    footer {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border-top: 0.5px solid rgba(0,0,0,0.18);
+      padding: 10px 16px; padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    }
+    #open-btn {
+      width: 100%; padding: 14px; background: #007aff; color: white; border: none;
+      border-radius: 12px; font-size: 17px; font-weight: 600;
+      cursor: pointer; font-family: inherit; transition: opacity 0.12s;
+    }
+    #open-btn:disabled { opacity: 0.45; cursor: default; }
+    #open-btn:active:not(:disabled) { opacity: 0.8; }
+
+    /* ===== LIGHTBOX ===== */
+    #lightbox {
+      display: none; position: fixed; inset: 0;
+      background: #000; z-index: 900; flex-direction: column;
+    }
+    #lightbox.show { display: flex; }
+
+    .lb-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; padding-top: max(10px, env(safe-area-inset-top));
+      background: rgba(0,0,0,0.72);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); flex-shrink: 0;
+    }
+    .lb-icon-btn {
+      width: 34px; height: 34px; border-radius: 50%;
+      background: rgba(255,255,255,0.12); border: none; color: white;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: background 0.1s;
+    }
+    .lb-icon-btn:active { background: rgba(255,255,255,0.25); }
+    .lb-counter { color: rgba(255,255,255,0.85); font-size: 15px; font-weight: 500; }
+    .lb-placeholder { width: 34px; }
+
+    .lb-body {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      position: relative; overflow: hidden; background: #000;
+    }
+    #lb-img {
+      max-width: 100%; max-height: 100%; object-fit: contain;
+      /* Keep iOS native long-press menu (Add to Photos) */
+      -webkit-touch-callout: default;
+      user-select: none; -webkit-user-select: none; display: none;
+    }
+    .lb-spinner-wrap {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .lb-spinner {
+      width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.2);
+      border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
+    #lb-error {
+      position: absolute; inset: 0; display: none;
+      align-items: center; justify-content: center;
+      color: rgba(255,255,255,0.45); font-size: 14px;
+    }
+    #lb-swipe-hint {
+      position: absolute; bottom: 8px; left: 0; right: 0;
+      text-align: center; font-size: 11px; color: rgba(255,255,255,0.3); pointer-events: none;
+    }
+
+    #lb-ios-tip {
+      display: none; padding: 8px 16px;
+      background: rgba(0,0,0,0.8); text-align: center; flex-shrink: 0;
+    }
+    .lb-tip-pill {
+      display: inline-block; padding: 6px 16px;
+      background: rgba(255,214,0,0.1); border: 1px solid rgba(255,214,0,0.3);
+      border-radius: 99px; font-size: 13px; color: rgba(255,255,255,0.85);
+    }
+    .lb-tip-pill em { color: #ffd600; font-style: normal; font-weight: 700; }
+
+    .lb-nav {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; padding-bottom: max(10px, env(safe-area-inset-bottom));
+      background: rgba(0,0,0,0.72);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); flex-shrink: 0;
+    }
+    .lb-nav-btn {
+      flex: 1; padding: 12px 6px; border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 10px; background: rgba(255,255,255,0.07);
+      color: white; font-size: 15px; font-weight: 500;
+      cursor: pointer; font-family: inherit; transition: background 0.1s;
+    }
+    .lb-nav-btn:disabled { opacity: 0.25; }
+    .lb-nav-btn:active:not(:disabled) { background: rgba(255,255,255,0.15); }
+    .lb-done-btn {
+      flex: 2; padding: 12px; border: none; border-radius: 10px;
+      background: #007aff; color: white; font-size: 15px; font-weight: 600;
+      cursor: pointer; font-family: inherit;
+    }
+
+    /* Footer secondary button */
+    #view-link-wrap { display:none; text-align:center; padding-top:7px; }
+    #view-link-btn {
+      background: none; border: none; color: #007aff; font-size: 14px;
+      cursor: pointer; font-family: inherit; padding: 4px 12px;
+    }
+
+    /* Fetch progress overlay */
+    #fetch-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.78);
+      z-index: 1000; display: none; align-items: center; justify-content: center;
+    }
+    .fetch-box {
+      background: #1c1c1e; border-radius: 18px; padding: 28px 32px;
+      display: flex; flex-direction: column; align-items: center; gap: 14px;
+      min-width: 240px; max-width: 80vw;
+    }
+    .fetch-spinner {
+      width: 36px; height: 36px; border: 3px solid rgba(255,255,255,0.2);
+      border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
+    #fetch-text { color: white; font-size: 16px; font-weight: 600; }
+    .fetch-bar-wrap {
+      width: 100%; height: 4px; background: rgba(255,255,255,0.15);
+      border-radius: 2px; overflow: hidden;
+    }
+    #fetch-bar { height: 100%; background: #007aff; border-radius: 2px; width: 0%; transition: width 0.25s; }
+    .fetch-hint { color: rgba(255,255,255,0.45); font-size: 12px; }
+    #fetch-cancel {
+      background: none; border: 1px solid rgba(255,255,255,0.25);
+      color: rgba(255,255,255,0.7); border-radius: 8px; padding: 8px 28px;
+      font-size: 14px; cursor: pointer; font-family: inherit; margin-top: 2px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>&#x4F20;&#x8F93;&#x7167;&#x7247;</h1>
+  <span id="count-label"></span>
+  <button id="select-all-btn" onclick="toggleSelectAll()">&#x5168;&#x9009;</button>
+</header>
+
+<!-- iOS tip: shown only on iPhone/iPad -->
+<div id="ios-tip">
+  &#x1F4A1; <strong>&#x9996;&#x6B21;&#x4F7F;&#x7528;&#xFF1A;</strong>Safari &#x4F1A;&#x63D0;&#x793A;&#x300C;&#x6B64;&#x8FDE;&#x63A5;&#x4E0D;&#x5B89;&#x5168;&#x300D;&#xFF0C;&#x70B9;&#x300C;&#x9AD8;&#x7EA7;&#x300D; &#x2192; &#x300C;&#x7EE7;&#x7EED;&#x8BBF;&#x95EE;&#x300D;&#x5373;&#x53EF;&#x3002;&#x4E4B;&#x540E;&#x52FE;&#x9009;&#x7167;&#x7247;&#x70B9;&#x300C;&#x4FDD;&#x5B58;&#x5230;&#x76F8;&#x518C;&#x300D;&#xFF0C;&#x5373;&#x53EF;&#x6279;&#x91CF;&#x5B58;&#x5165;&#x76F8;&#x518C;&#x3002;
+</div>
+
+<div id="loading-state" class="state-screen">
+  <div class="spinner"></div>
+  <span>&#x6B63;&#x5728;&#x52A0;&#x8F7D;&#x2026;</span>
+</div>
+
+<div id="empty-state" class="state-screen" style="display:none;">
+  <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" opacity="0.3">
+    <rect x="3" y="3" width="18" height="18" rx="2"/>
+    <circle cx="8.5" cy="8.5" r="1.5"/>
+    <polyline points="21 15 16 10 5 21"/>
+  </svg>
+  <span>&#x6587;&#x4EF6;&#x5939;&#x4E2D;&#x6CA1;&#x6709;&#x56FE;&#x7247;</span>
+</div>
+
+<div id="grid" style="display:none;"></div>
+
+<!-- LIGHTBOX -->
+<div id="lightbox">
+  <div class="lb-bar">
+    <button class="lb-icon-btn" onclick="closeLightbox()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+      </svg>
+    </button>
+    <span class="lb-counter" id="lb-counter"></span>
+    <!-- Share button shown on non-iOS (Android / desktop) -->
+    <button class="lb-icon-btn" id="lb-share-btn" onclick="lbShare()" style="display:none;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+      </svg>
+    </button>
+    <div class="lb-placeholder" id="lb-placeholder"></div>
+  </div>
+
+  <div class="lb-body">
+    <div class="lb-spinner-wrap" id="lb-loading"><div class="lb-spinner"></div></div>
+    <div id="lb-error">&#x56FE;&#x7247;&#x52A0;&#x8F7D;&#x5931;&#x8D25;</div>
+    <img id="lb-img" src="" alt="" />
+    <div id="lb-swipe-hint"></div>
+  </div>
+
+  <!-- iOS long-press tip -->
+  <div id="lb-ios-tip">
+    <span class="lb-tip-pill">&#x957F;&#x6309;&#x56FE;&#x7247; &#x2192; <em>&#x6DFB;&#x52A0;&#x5230;&#x7167;&#x7247;</em>&#xFF0C;&#x76F4;&#x63A5;&#x5B58;&#x5165;&#x76F8;&#x518C;</span>
+  </div>
+
+  <div class="lb-nav">
+    <button class="lb-nav-btn" id="lb-prev" onclick="lbNav(-1)">&#x2039; &#x4E0A;&#x4E00;&#x5F20;</button>
+    <button class="lb-done-btn" onclick="closeLightbox()">&#x5B8C;&#x6210;</button>
+    <button class="lb-nav-btn" id="lb-next" onclick="lbNav(1)">&#x4E0B;&#x4E00;&#x5F20; &#x203A;</button>
+  </div>
+</div>
+
+<!-- Fetch progress overlay -->
+<div id="fetch-overlay">
+  <div class="fetch-box">
+    <div class="fetch-spinner"></div>
+    <div id="fetch-text">&#x6B63;&#x5728;&#x51C6;&#x5907;...</div>
+    <div class="fetch-bar-wrap"><div id="fetch-bar"></div></div>
+    <div class="fetch-hint">&#x6B63;&#x5728;&#x52A0;&#x8F7D;&#x56FE;&#x7247;&#xFF0C;&#x8BF7;&#x7A0D;&#x5019;</div>
+    <button id="fetch-cancel" onclick="cancelFetch()">&#x53D6;&#x6D88;</button>
+  </div>
+</div>
+
+<footer>
+  <button id="open-btn" disabled>&#x9009;&#x62E9;&#x8981;&#x4FDD;&#x5B58;&#x7684;&#x7167;&#x7247;</button>
+  <div id="view-link-wrap">
+    <button id="view-link-btn" onclick="openLightboxSelected()">&#x4EC5;&#x6D4F;&#x89C8;&#xFF0C;&#x4E0D;&#x4FDD;&#x5B58;</button>
+  </div>
+</footer>
+
+<script>
+  'use strict';
+
+  let photos   = [];
+  let selected = new Set();
+  let lbList   = [];
+  let lbIdx    = 0;
+  let tsX = 0, tsY = 0;
+
+  // Platform detection
+  const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+  if (isIOS) {
+    document.getElementById('ios-tip').style.display = 'block';
+    document.getElementById('lb-ios-tip').style.display = 'block';
+    document.getElementById('view-link-wrap').style.display = 'block';
+    document.getElementById('open-btn').onclick = batchSave;
+  } else {
+    document.getElementById('lb-share-btn').style.display = 'flex';
+    document.getElementById('lb-placeholder').style.display = 'none';
+    document.getElementById('open-btn').onclick = openLightboxSelected;
+  }
+
+  // Load photo list
+  async function loadPhotos() {
+    try {
+      const res = await fetch('/api/list');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      photos = await res.json();
+      renderGrid();
+    } catch (e) {
+      document.getElementById('loading-state').innerHTML = '<span style="color:#c53030">Load failed, please refresh</span>';
+    }
+  }
+
+  // Render grid
+  function renderGrid() {
+    document.getElementById('loading-state').style.display = 'none';
+    if (photos.length === 0) {
+      document.getElementById('empty-state').style.display = 'flex';
+      return;
+    }
+    document.getElementById('count-label').textContent = photos.length + ' \u5F20';
+    const gridEl = document.getElementById('grid');
+    gridEl.style.display = 'grid';
+
+    photos.forEach(photo => {
+      const item = document.createElement('div');
+      item.className = 'photo-item';
+      item.dataset.name = photo.name;
+      item.innerHTML = '<div class="check-ring"></div>';
+      item.addEventListener('click', () => toggleSelect(photo.name, item));
+
+      const observer = new IntersectionObserver(entries => {
+        if (entries[0].isIntersecting) {
+          const img = new Image();
+          img.src = '/thumb/' + encodeURIComponent(photo.name);
+          img.alt = photo.name;
+          img.style.opacity = '0';
+          img.onload = () => {
+            item.insertBefore(img, item.firstChild);
+            requestAnimationFrame(() => { img.style.opacity = '1'; });
+          };
+          observer.disconnect();
+        }
+      }, { rootMargin: '300px' });
+      observer.observe(item);
+      gridEl.appendChild(item);
+    });
+    updateFooter();
+  }
+
+  // Selection
+  function toggleSelect(name, el) {
+    if (selected.has(name)) { selected.delete(name); el.classList.remove('selected'); }
+    else                    { selected.add(name);    el.classList.add('selected'); }
+    updateFooter();
+  }
+
+  function toggleSelectAll() {
+    const allSel = selected.size === photos.length && photos.length > 0;
+    if (allSel) {
+      selected.clear();
+      document.querySelectorAll('.photo-item').forEach(el => el.classList.remove('selected'));
+    } else {
+      photos.forEach(p => selected.add(p.name));
+      document.querySelectorAll('.photo-item').forEach(el => el.classList.add('selected'));
+    }
+    updateFooter();
+  }
+
+  function updateFooter() {
+    const n   = selected.size;
+    const btn = document.getElementById('open-btn');
+    const sa  = document.getElementById('select-all-btn');
+    sa.textContent = (n === photos.length && photos.length > 0) ? '\u53D6\u6D88\u5168\u9009' : '\u5168\u9009';
+    if (n === 0) {
+      btn.disabled = true;
+      btn.textContent = isIOS ? '\u52FE\u9009\u7167\u7247\u540E\u4FDD\u5B58' : '\u9009\u62E9\u8981\u6253\u5F00\u7684\u7167\u7247';
+    } else {
+      btn.disabled = false;
+      btn.textContent = isIOS
+        ? '\u4FDD\u5B58 ' + n + ' \u5F20\u5230\u76F8\u518C'
+        : '\u6253\u5F00\u9009\u4E2D\u7684 ' + n + ' \u5F20';
+    }
+  }
+
+  // Lightbox
+  function openLightboxSelected() {
+    if (selected.size === 0) return;
+    openLightbox(photos.filter(p => selected.has(p.name)), 0);
+  }
+
+  function openLightbox(photoList, startIdx) {
+    lbList = photoList; lbIdx = startIdx;
+    document.getElementById('lightbox').classList.add('show');
+    document.body.style.overflow = 'hidden';
+    lbLoad();
+    const lb = document.getElementById('lightbox');
+    lb.addEventListener('touchstart', onTouchStart, { passive: true });
+    lb.addEventListener('touchend',   onTouchEnd,   { passive: true });
+  }
+
+  function closeLightbox() {
+    const lb = document.getElementById('lightbox');
+    lb.classList.remove('show');
+    document.body.style.overflow = '';
+    const img = document.getElementById('lb-img');
+    img.src = ''; img.style.display = 'none';
+    document.getElementById('lb-loading').style.display = 'flex';
+    document.getElementById('lb-error').style.display = 'none';
+    lb.removeEventListener('touchstart', onTouchStart);
+    lb.removeEventListener('touchend',   onTouchEnd);
+  }
+
+  function lbLoad() {
+    const photo   = lbList[lbIdx];
+    const img     = document.getElementById('lb-img');
+    const loading = document.getElementById('lb-loading');
+    const errEl   = document.getElementById('lb-error');
+    const swipe   = document.getElementById('lb-swipe-hint');
+
+    img.style.display = 'none'; errEl.style.display = 'none'; loading.style.display = 'flex';
+    document.getElementById('lb-counter').textContent = (lbIdx + 1) + ' / ' + lbList.length;
+    document.getElementById('lb-prev').disabled = lbIdx === 0;
+    document.getElementById('lb-next').disabled = lbIdx === lbList.length - 1;
+
+    if (lbList.length > 1) {
+      const hints = [];
+      if (lbIdx > 0)                 hints.push('\u2190 \u53F3\u6ED1');
+      if (lbIdx < lbList.length - 1) hints.push('\u5DE6\u6ED1 \u2192');
+      swipe.textContent = hints.join('   ');
+    } else { swipe.textContent = ''; }
+
+    // Load original file (not thumb) — iOS long-press saves full-quality original
+    const tmp = new Image();
+    tmp.onload = () => { img.src = tmp.src; img.style.display = 'block'; loading.style.display = 'none'; };
+    tmp.onerror = () => { loading.style.display = 'none'; errEl.style.display = 'flex'; };
+    tmp.src = '/file/' + encodeURIComponent(photo.name);
+  }
+
+  function lbNav(dir) {
+    const n = lbIdx + dir;
+    if (n >= 0 && n < lbList.length) { lbIdx = n; lbLoad(); }
+  }
+
+  // ===== BATCH SAVE (iOS) =====
+  let fetchAbortCtrl = null;
+
+  async function batchSave() {
+    if (!selected.size) return;
+    const names = [...selected];
+    fetchAbortCtrl = new AbortController();
+    const signal  = fetchAbortCtrl.signal;
+
+    const overlay  = document.getElementById('fetch-overlay');
+    const textEl   = document.getElementById('fetch-text');
+    const barEl    = document.getElementById('fetch-bar');
+    overlay.style.display = 'flex';
+    barEl.style.width = '0%';
+
+    const files = [];
+    try {
+      for (let i = 0; i < names.length; i++) {
+        if (signal.aborted) break;
+        textEl.textContent = '\u6B63\u5728\u52A0\u8F7D ' + (i + 1) + ' / ' + names.length + ' \u5F20';
+        barEl.style.width = (i / names.length * 100) + '%';
+        const resp = await fetch('/file/' + encodeURIComponent(names[i]), { signal });
+        const blob = await resp.blob();
+        files.push(new File([blob], names[i], { type: blob.type || guessMime(names[i]) }));
+      }
+    } catch(e) {
+      overlay.style.display = 'none';
+      if (e.name !== 'AbortError') alert('\u52A0\u8F7D\u5931\u8D25\uFF1A' + e.message);
+      return;
+    }
+
+    overlay.style.display = 'none';
+    if (!files.length) return;
+
+    try {
+      if (navigator.canShare && navigator.canShare({ files })) {
+        await navigator.share({ files });
+      } else if (navigator.share) {
+        // Files not supported, share URL of first image
+        await navigator.share({ url: location.origin + '/file/' + encodeURIComponent(names[0]) });
+      } else {
+        openLightboxSelected();
+      }
+    } catch(e) {
+      if (e.name !== 'AbortError') alert('\u65E0\u6CD5\u6253\u5F00\u5206\u4EAB\uFF1A' + e.message);
+    }
+  }
+
+  function cancelFetch() {
+    if (fetchAbortCtrl) { fetchAbortCtrl.abort(); fetchAbortCtrl = null; }
+  }
+
+  // Share for non-iOS (Android)
+  async function lbShare() {
+    if (!navigator.share) { alert('Browser does not support sharing'); return; }
+    const photo = lbList[lbIdx];
+    try {
+      const resp = await fetch('/file/' + encodeURIComponent(photo.name));
+      const blob = await resp.blob();
+      const mime = blob.type || guessMime(photo.name);
+      const file = new File([blob], photo.name, { type: mime });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: photo.name });
+      } else {
+        await navigator.share({ url: location.origin + '/file/' + encodeURIComponent(photo.name) });
+      }
+    } catch (e) {
+      if (e && e.name !== 'AbortError') alert('Share failed: ' + e.message);
+    }
+  }
+
+  // Touch swipe
+  function onTouchStart(e) { tsX = e.touches[0].clientX; tsY = e.touches[0].clientY; }
+  function onTouchEnd(e) {
+    const dx = e.changedTouches[0].clientX - tsX;
+    const dy = e.changedTouches[0].clientY - tsY;
+    if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.5) lbNav(dx < 0 ? 1 : -1);
+  }
+
+  function guessMime(name) {
+    const ext = (name.split('.').pop() || '').toLowerCase();
+    const m = { jpg:'image/jpeg', jpeg:'image/jpeg', png:'image/png',
+      webp:'image/webp', gif:'image/gif', heic:'image/heic',
+      heif:'image/heic', hif:'image/heic', avif:'image/avif',
+      tif:'image/tiff', tiff:'image/tiff' };
+    return m[ext] || 'application/octet-stream';
+  }
+
+  loadPhotos();
+</script>
+</body>
+</html>

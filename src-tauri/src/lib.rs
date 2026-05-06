@@ -1,3 +1,5 @@
+pub mod transfer;
+
 use serde::Serialize;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -185,7 +187,7 @@ fn is_processable_image(ext: &str) -> bool {
 
 /// 判断扩展名是否为 HEIF 系列格式
 #[cfg(windows)]
-fn is_heif_ext(ext: &str) -> bool {
+pub fn is_heif_ext(ext: &str) -> bool {
     matches!(ext, ".hif" | ".heic" | ".heif" | ".avif")
 }
 
@@ -193,7 +195,7 @@ fn is_heif_ext(ext: &str) -> bool {
 /// 需要系统安装「HEIF 图像扩展」（Microsoft Store 免费）
 /// 未安装扩展或解码失败时返回 Err，调用方应回退到直接复制
 #[cfg(windows)]
-fn decode_heif_via_wic(path: &std::path::Path) -> Result<image::RgbImage, String> {
+pub fn decode_heif_via_wic(path: &std::path::Path) -> Result<image::RgbImage, String> {
     use std::os::windows::ffi::OsStrExt;
     use windows::{
         core::{Interface, PCWSTR},
@@ -634,6 +636,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(CancelFlag(Arc::new(AtomicBool::new(false))))
+        .manage(transfer::TransferState::new())
     .invoke_handler(tauri::generate_handler![
             scan_folder,
             delete_to_trash,
@@ -643,6 +646,9 @@ pub fn run() {
             scan_process,
             execute_process,
             cancel_process,
+            transfer::start_transfer,
+            transfer::stop_transfer,
+            transfer::get_transfer_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
