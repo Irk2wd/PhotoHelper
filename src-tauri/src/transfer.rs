@@ -38,6 +38,13 @@ pub struct FileReceivedEvent {
     pub size: u64,
 }
 
+#[derive(Clone, Serialize)]
+pub struct UploadProgressEvent {
+    pub name: String,
+    pub received: u64,
+    pub total: u64,
+}
+
 // ── Tauri 插件状态 ────────────────────────────────────────────
 struct TransferHandle {
     shutdown_tx: watch::Sender<bool>,
@@ -205,15 +212,22 @@ async fn handle_ui() -> Html<&'static str> {
 /// POST /api/upload — 接收手机上传的文件，保存到 upload_folder
 async fn handle_upload(
     State(srv): State<Arc<ServerState>>,
+    headers: axum::http::HeaderMap,
     mut multipart: Multipart,
 ) -> Response {
     use tauri::Emitter as _;
     use tokio::io::AsyncWriteExt as _;
 
+    let total_bytes: u64 = headers
+        .get(axum::http::header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+
     let mut saved: Vec<String> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
 
-    while let Ok(Some(field)) = multipart.next_field().await {
+    while let Ok(Some(mut field)) = multipart.next_field().await {
         // 优先用 filename，fallback 到 field name
         let raw_name = field
             .file_name()
@@ -231,14 +245,6 @@ async fn handle_upload(
             errors.push(format!("{}: 文件名非法", raw_name));
             continue;
         }
-
-        let data = match field.bytes().await {
-            Ok(b) => b,
-            Err(e) => {
-                errors.push(format!("{}: 读取失败 {}", raw_name, e));
-                continue;
-            }
-        };
 
         // 处理文件名冲突：追加 _1, _2, ...
         let dest_path = {
@@ -266,28 +272,53 @@ async fn handle_upload(
             }
         };
 
+        // ── 逐块写文件 + 进度事件 ──────────────────────────────
+        let mut file = match tokio::fs::File::create(&dest_path).await {
+            Ok(f) => f,
+            Err(e) => {
+                errors.push(format!("{}: 创建文件失败 {}", base_name, e));
+                continue;
+            }
+        };
+        let mut received: u64 = 0;
+        let mut write_error: Option<String> = None;
+        const EMIT_INTERVAL: u64 = 256 * 1024;
+        let mut last_emit: u64 = 0;
+
+        while let Ok(Some(chunk)) = field.chunk().await {
+            received += chunk.len() as u64;
+            if let Err(e) = file.write_all(&chunk).await {
+                write_error = Some(format!("{}: 写入失败 {}", base_name, e));
+                break;
+            }
+            if received - last_emit >= EMIT_INTERVAL {
+                last_emit = received;
+                let _ = srv.app.emit(
+                    "transfer://upload-progress",
+                    UploadProgressEvent { name: base_name.clone(), received, total: total_bytes },
+                );
+            }
+        }
+        let _ = file.flush().await;
+        drop(file);
+
+        if let Some(err) = write_error {
+            errors.push(err);
+            let _ = tokio::fs::remove_file(&dest_path).await;
+            continue;
+        }
+
         let final_name = dest_path
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| base_name.clone());
 
-        match tokio::fs::File::create(&dest_path).await {
-            Ok(mut f) => {
-                if let Err(e) = f.write_all(&data).await {
-                    errors.push(format!("{}: 写入失败 {}", final_name, e));
-                } else {
-                    let size = data.len() as u64;
-                    let _ = srv.app.emit(
-                        "transfer://file-received",
-                        FileReceivedEvent { name: final_name.clone(), size },
-                    );
-                    saved.push(final_name);
-                }
-            }
-            Err(e) => {
-                errors.push(format!("{}: 创建文件失败 {}", final_name, e));
-            }
-        }
+        let size = tokio::fs::metadata(&dest_path).await.map(|m| m.len()).unwrap_or(received);
+        let _ = srv.app.emit(
+            "transfer://file-received",
+            FileReceivedEvent { name: final_name.clone(), size },
+        );
+        saved.push(final_name);
     }
 
     let body = serde_json::json!({ "saved": saved, "errors": errors }).to_string();

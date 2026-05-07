@@ -261,3 +261,12 @@
   font-size: 12px;
   color: var(--color-text-muted, #888);
 }
+
+/* ── Upload progress card ── */
+.tv-progress-card { background:var(--color-surface,#fff); border:1px solid var(--color-border,#e0e0e0); border-radius:10px; padding:14px 16px; display:flex; flex-direction:column; gap:8px; }
+.tv-progress-name { font-size:13px; font-weight:500; color:var(--color-text,#1a1a1a); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-family:'Consolas','SF Mono',monospace; }
+.tv-progress-bar { height:6px; background:var(--color-border,#e0e0e0); border-radius:3px; overflow:hidden; }
+.tv-progress-fill { height:100%; background:#34c759; border-radius:3px; transition:width 0.2s ease; }
+@keyframes tv-indeterminate { 0% { transform:translateX(-100%); } 100% { transform:translateX(400%); } }
+.tv-progress-fill--indeterminate { width:25% !important; animation:tv-indeterminate 1.2s linear infinite; }
+.tv-progress-text { font-size:12px; color:var(--color-text-muted,#888); }

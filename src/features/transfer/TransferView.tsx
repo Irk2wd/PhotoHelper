@@ -14,6 +14,12 @@ interface FileReceivedEvent {
   size: number;
 }
 
+interface UploadProgressEvent {
+  name: string;
+  received: number;
+  total: number;
+}
+
 export default function TransferView() {
   const [folder, setFolder] = useState("");
   const [uploadFolder, setUploadFolder] = useState("");
@@ -25,18 +31,25 @@ export default function TransferView() {
   const [copied, setCopied] = useState(false);
   const [starting, setStarting] = useState(false);
   const [receivedFiles, setReceivedFiles] = useState<FileReceivedEvent[]>([]);
+  const [currentUpload, setCurrentUpload] = useState<UploadProgressEvent | null>(null);
 
   // 初始化时检查服务是否已在运行
   useEffect(() => {
     invoke<boolean>("get_transfer_status").then((running) => {
       setRunning(running);
     });
-    // 监听手机上传事件
-    const unlisten = listen<FileReceivedEvent>("transfer://file-received", (event) => {
+    // 监听上传进度事件
+    const unlistenProgress = listen<UploadProgressEvent>("transfer://upload-progress", (event) => {
+      setCurrentUpload(event.payload);
+    });
+    // 监听手机上传完成事件
+    const unlistenReceived = listen<FileReceivedEvent>("transfer://file-received", (event) => {
+      setCurrentUpload(null);
       setReceivedFiles((prev) => [event.payload, ...prev].slice(0, 100));
     });
     return () => {
-      unlisten.then((fn) => fn());
+      unlistenProgress.then((fn) => fn());
+      unlistenReceived.then((fn) => fn());
     };
     // 组件卸载时不自动停止服务（允许后台持续运行）
   }, []);
@@ -214,6 +227,24 @@ export default function TransferView() {
           <p className="tv-qr-tip">
                         iPhone：首次访问点「高级」→「继续访问」信任证书，大后即可批量保存：勾选 →「保存到相册」→「存储 X 张图像」。
           </p>
+        </div>
+      )}
+
+      {/* 上传进度条 */}
+      {running && currentUpload && (
+        <div className="tv-progress-card">
+          <div className="tv-progress-name">{currentUpload.name}</div>
+          <div className="tv-progress-bar">
+            <div
+              className={`tv-progress-fill${currentUpload.total === 0 ? " tv-progress-fill--indeterminate" : ""}`}
+              style={currentUpload.total > 0 ? { width: `${Math.min(100, (currentUpload.received / currentUpload.total) * 100).toFixed(1)}%` } : undefined}
+            />
+          </div>
+          <div className="tv-progress-text">
+            {currentUpload.total > 0
+              ? `${((currentUpload.received / currentUpload.total) * 100).toFixed(0)}%  ·  ${(currentUpload.received / 1048576).toFixed(1)} MB / ${(currentUpload.total / 1048576).toFixed(1)} MB`
+              : `${(currentUpload.received / 1048576).toFixed(1)} MB 已接收`}
+          </div>
         </div>
       )}
 
