@@ -261,6 +261,13 @@
       font-size: 28px; background: rgba(0,0,0,0.45); display: none;
     }
     .up-item img { cursor: zoom-in; }
+    .up-item video { width: 100%; height: 100%; object-fit: cover; display: block; cursor: zoom-in; pointer-events: none; }
+    .up-video::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='11' fill='rgba(0,0,0,0.45)'/%3E%3Cpolygon points='10,8 18,12 10,16' fill='white'/%3E%3C/svg%3E") center/40px no-repeat;
+      pointer-events: none;
+    }
 
     /* ===== PREVIEW LIGHTBOX ===== */
     #preview-lightbox {
@@ -277,6 +284,11 @@
       max-width: 100%; max-height: 100%;
       object-fit: contain;
       user-select: none; -webkit-user-drag: none;
+    }
+    #pl-video {
+      max-width: 100%; max-height: 100%;
+      object-fit: contain;
+      display: none;
     }
     #pl-close {
       position: absolute; top: 12px; right: 16px;
@@ -372,6 +384,7 @@
   <div id="pl-img-wrap">
     <button id="pl-prev" onclick="stepPreview(-1)">&#x2039;</button>
     <img id="pl-img" src="" alt="" />
+    <video id="pl-video" controls playsinline></video>
     <button id="pl-next" onclick="stepPreview(1)">&#x203A;</button>
   </div>
   <div id="pl-info"></div>
@@ -774,8 +787,19 @@
     uploadFiles.forEach((file, idx) => {
       const item = document.createElement('div');
       item.className = 'up-item';
-      const img = document.createElement('img');
-      img.src = uploadObjectURLs[idx];
+      let mediaEl;
+      if (isVideoFile(file)) {
+        mediaEl = document.createElement('video');
+        mediaEl.src = uploadObjectURLs[idx];
+        mediaEl.muted = true;
+        mediaEl.autoplay = true;
+        mediaEl.loop = true;
+        mediaEl.setAttribute('playsinline', '');
+        item.classList.add('up-video');
+      } else {
+        mediaEl = document.createElement('img');
+        mediaEl.src = uploadObjectURLs[idx];
+      }
       // 整个格子都可点击预览（移动端 img 直接绑 click 延迟且不可靠）
       item.addEventListener('click', (e) => {
         if (!e.target.classList.contains('up-remove')) openPreview(idx);
@@ -787,7 +811,7 @@
       const status = document.createElement('div');
       status.className = 'up-status';
       status.id = 'up-status-' + idx;
-      item.append(img, rmBtn, status);
+      item.append(mediaEl, rmBtn, status);
       grid.appendChild(item);
     });
   }
@@ -802,7 +826,16 @@
   }
 
   function closePreview() {
+    const video = document.getElementById('pl-video');
+    video.pause();
+    video.src = '';
+    video.style.display = 'none';
+    document.getElementById('pl-img').style.display = '';
     document.getElementById('preview-lightbox').style.display = 'none';
+  }
+
+  function isVideoFile(file) {
+    return /\.(mp4|mov|avi|mkv|m4v)$/i.test(file.name);
   }
 
   function stepPreview(delta) {
@@ -811,10 +844,23 @@
   }
 
   function _renderLightbox() {
-    const img  = document.getElementById('pl-img');
-    const info = document.getElementById('pl-info');
-    img.src = uploadObjectURLs[previewIdx];   // blob URL 已存在，直接显示，不用 opacity 动画
-    info.textContent = uploadFiles[previewIdx].name + ' \u00B7 ' + (previewIdx + 1) + ' / ' + uploadFiles.length;
+    const img   = document.getElementById('pl-img');
+    const video = document.getElementById('pl-video');
+    const info  = document.getElementById('pl-info');
+    const file  = uploadFiles[previewIdx];
+    if (isVideoFile(file)) {
+      img.style.display   = 'none';
+      img.src = '';
+      video.style.display = 'block';
+      video.src = uploadObjectURLs[previewIdx];
+    } else {
+      video.pause();
+      video.src = '';
+      video.style.display = 'none';
+      img.style.display   = '';
+      img.src = uploadObjectURLs[previewIdx];
+    }
+    info.textContent = file.name + ' \u00B7 ' + (previewIdx + 1) + ' / ' + uploadFiles.length;
     document.getElementById('pl-prev').disabled = previewIdx === 0;
     document.getElementById('pl-next').disabled = previewIdx === uploadFiles.length - 1;
   }

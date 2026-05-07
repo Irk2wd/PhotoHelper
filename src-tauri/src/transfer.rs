@@ -416,6 +416,7 @@ async fn handle_list(State(srv): State<Arc<ServerState>>) -> Response {
     let image_exts = [
         ".jpg", ".jpeg", ".png", ".webp", ".bmp",
         ".tif", ".tiff", ".hif", ".heic", ".heif", ".avif",
+        ".mp4", ".mov", ".avi", ".mkv", ".m4v",
     ];
     let dir = match std::fs::read_dir(&srv.folder) {
         Ok(d) => d,
@@ -471,6 +472,27 @@ async fn handle_thumb(
         .extension()
         .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
         .unwrap_or_default();
+
+    // 视频文件：返回 480×270 深灰占位图
+    const VIDEO_EXTS_THUMB: &[&str] = &[".mp4", ".mov", ".avi", ".mkv", ".m4v"];
+    if VIDEO_EXTS_THUMB.contains(&ext.as_str()) {
+        let placeholder = image::DynamicImage::ImageRgb8(
+            image::RgbImage::from_fn(480, 270, |_, _| image::Rgb([40u8, 40u8, 40u8]))
+        );
+        let mut buf = Vec::new();
+        if placeholder
+            .write_to(&mut std::io::Cursor::new(&mut buf), ImageFormat::Jpeg)
+            .is_err()
+        {
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+        return HttpResponse::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "image/jpeg")
+            .header(header::CACHE_CONTROL, "public, max-age=3600")
+            .body(axum::body::Body::from(buf))
+            .unwrap();
+    }
 
     let img_result = load_image(&path, &ext);
     let img = match img_result {
@@ -587,6 +609,10 @@ fn ext_to_mime(ext: &str) -> &'static str {
         "heic" | "heif" | "hif" => "image/heic",
         "avif" => "image/avif",
         "tif" | "tiff" => "image/tiff",
+        "mp4" | "m4v" => "video/mp4",
+        "mov" => "video/quicktime",
+        "avi" => "video/x-msvideo",
+        "mkv" => "video/x-matroska",
         _ => "application/octet-stream",
     }
 }
