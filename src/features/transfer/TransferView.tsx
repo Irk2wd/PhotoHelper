@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import "./TransferView.css";
 
 interface StartTransferResult {
@@ -8,8 +9,14 @@ interface StartTransferResult {
   qr_svg: string;
 }
 
+interface FileReceivedEvent {
+  name: string;
+  size: number;
+}
+
 export default function TransferView() {
   const [folder, setFolder] = useState("");
+  const [uploadFolder, setUploadFolder] = useState("");
   const [port, setPort] = useState(8765);
   const [running, setRunning] = useState(false);
   const [serverUrl, setServerUrl] = useState("");
@@ -17,12 +24,20 @@ export default function TransferView() {
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [receivedFiles, setReceivedFiles] = useState<FileReceivedEvent[]>([]);
 
   // 初始化时检查服务是否已在运行
   useEffect(() => {
     invoke<boolean>("get_transfer_status").then((running) => {
       setRunning(running);
     });
+    // 监听手机上传事件
+    const unlisten = listen<FileReceivedEvent>("transfer://file-received", (event) => {
+      setReceivedFiles((prev) => [event.payload, ...prev].slice(0, 100));
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
     // 组件卸载时不自动停止服务（允许后台持续运行）
   }, []);
 
@@ -33,16 +48,25 @@ export default function TransferView() {
     }
   }, []);
 
+  const pickUploadFolder = useCallback(async () => {
+    const selected = await open({ directory: true, multiple: false });
+    if (typeof selected === "string") {
+      setUploadFolder(selected);
+    }
+  }, []);
+
   const handleStart = useCallback(async () => {
-    if (!folder) {
-      setError("请先选择要传输的文件夹");
+    if (!folder && !uploadFolder) {
+      setError("请至少选择一个文件夹（照片文件夹或接收文件夹）");
       return;
     }
     setError("");
     setStarting(true);
+    setReceivedFiles([]);
     try {
       const result = await invoke<StartTransferResult>("start_transfer", {
         folder,
+        uploadFolder,
         port,
       });
       setServerUrl(result.url);
@@ -53,7 +77,7 @@ export default function TransferView() {
     } finally {
       setStarting(false);
     }
-  }, [folder, port]);
+  }, [folder, uploadFolder, port]);
 
   const handleStop = useCallback(async () => {
     await invoke("stop_transfer");
@@ -100,6 +124,25 @@ export default function TransferView() {
 
         <div className="tv-divider" />
 
+        {/* 手机上传接收文件夹 */}
+        <div className="tv-row">
+          <span className="tv-row-label">接收文件夹</span>
+          <div className="tv-folder-group">
+            <span className="tv-folder-path" title={uploadFolder}>
+              {uploadFolder || "（同照片文件夹）"}
+            </span>
+            <button
+              className="tv-btn-secondary"
+              onClick={pickUploadFolder}
+              disabled={running}
+            >
+              选择…
+            </button>
+          </div>
+        </div>
+
+        <div className="tv-divider" />
+
         {/* 端口 */}
         <div className="tv-row">
           <span className="tv-row-label">服务端口</span>
@@ -128,7 +171,7 @@ export default function TransferView() {
           <button
             className="tv-btn-start"
             onClick={handleStart}
-            disabled={starting || !folder}
+            disabled={starting || (!folder && !uploadFolder)}
           >
             {starting ? "启动中…" : "启动传输服务"}
           </button>
@@ -171,6 +214,19 @@ export default function TransferView() {
           <p className="tv-qr-tip">
                         iPhone：首次访问点「高级」→「继续访问」信任证书，大后即可批量保存：勾选 →「保存到相册」→「存储 X 张图像」。
           </p>
+        </div>
+      )}
+
+      {/* 接收文件日志（手机上传到电脑） */}
+      {running && receivedFiles.length > 0 && (
+        <div className="tv-card tv-received-log">
+          <div className="tv-received-title">已接收 {receivedFiles.length} 个文件</div>
+          {receivedFiles.map((f, i) => (
+            <div key={i} className="tv-received-item">
+              <span className="tv-received-name">{f.name}</span>
+              <span className="tv-received-size">{(f.size / 1024).toFixed(0)} KB</span>
+            </div>
+          ))}
         </div>
       )}
     </div>

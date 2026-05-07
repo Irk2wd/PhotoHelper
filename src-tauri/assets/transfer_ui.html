@@ -89,6 +89,13 @@
     }
     #open-btn:disabled { opacity: 0.45; cursor: default; }
     #open-btn:active:not(:disabled) { opacity: 0.8; }
+    #upload-submit-btn {
+      width: 100%; padding: 14px; background: #34c759; color: white; border: none;
+      border-radius: 12px; font-size: 17px; font-weight: 600;
+      cursor: pointer; font-family: inherit; transition: opacity 0.12s;
+    }
+    #upload-submit-btn:disabled { opacity: 0.45; cursor: default; }
+    #upload-submit-btn:active:not(:disabled) { opacity: 0.8; }
 
     /* ===== LIGHTBOX ===== */
     #lightbox {
@@ -205,6 +212,100 @@
       color: rgba(255,255,255,0.7); border-radius: 8px; padding: 8px 28px;
       font-size: 14px; cursor: pointer; font-family: inherit; margin-top: 2px;
     }
+
+    /* ===== TAB BAR ===== */
+    .tab-bar {
+      display: flex; background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border-bottom: 0.5px solid rgba(0,0,0,0.18);
+    }
+    .tab-btn {
+      flex: 1; padding: 10px 4px; border: none; background: none;
+      font-size: 14px; font-weight: 500; color: #8e8e93;
+      cursor: pointer; font-family: inherit;
+      border-bottom: 2px solid transparent; transition: color 0.15s;
+    }
+    .tab-btn.active { color: #007aff; border-bottom-color: #007aff; }
+
+    /* ===== UPLOAD TAB ===== */
+    #upload-tab { display: none; padding-bottom: 120px; }
+    #upload-tab.active { display: block; }
+
+    #upload-empty {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 45vh; gap: 14px; padding: 32px 24px; color: #8e8e93; font-size: 15px;
+    }
+    #upload-pick-btn {
+      padding: 14px 32px; background: #007aff; color: white; border: none;
+      border-radius: 12px; font-size: 17px; font-weight: 600;
+      cursor: pointer; font-family: inherit;
+    }
+    #upload-pick-btn:active { opacity: 0.8; }
+
+    #upload-preview-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 2px; padding: 2px;
+    }
+    .up-item {
+      position: relative; aspect-ratio: 1; overflow: hidden; background: #e5e5ea;
+    }
+    .up-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .up-item .up-remove {
+      position: absolute; top: 3px; right: 3px; width: 20px; height: 20px;
+      background: rgba(0,0,0,0.55); border-radius: 50%; border: none; color: white;
+      font-size: 13px; line-height: 1; cursor: pointer; display: flex;
+      align-items: center; justify-content: center;
+    }
+    .up-item .up-status {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      font-size: 28px; background: rgba(0,0,0,0.45); display: none;
+    }
+    .up-item img { cursor: zoom-in; }
+
+    /* ===== PREVIEW LIGHTBOX ===== */
+    #preview-lightbox {
+      position: fixed; inset: 0; z-index: 2000;
+      background: rgba(0,0,0,0.92);
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+    }
+    #pl-img-wrap {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      width: 100%; overflow: hidden; position: relative;
+    }
+    #pl-img {
+      max-width: 100%; max-height: 100%;
+      object-fit: contain;
+      user-select: none; -webkit-user-drag: none;
+    }
+    #pl-close {
+      position: absolute; top: 12px; right: 16px;
+      background: rgba(255,255,255,0.15); border: none;
+      color: white; font-size: 22px; width: 38px; height: 38px;
+      border-radius: 50%; cursor: pointer; z-index: 1;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #pl-prev, #pl-next {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      background: rgba(255,255,255,0.15); border: none;
+      color: white; font-size: 26px; width: 44px; height: 44px;
+      border-radius: 50%; cursor: pointer; z-index: 1;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #pl-prev { left: 10px; }
+    #pl-next { right: 10px; }
+    #pl-prev:disabled, #pl-next:disabled { opacity: 0.2; pointer-events: none; }
+    #pl-info {
+      padding: 10px 16px 20px;
+      color: rgba(255,255,255,0.7); font-size: 13px; text-align: center;
+      max-width: 90%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    /* Upload progress overlay */
+    #upload-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.78);
+      z-index: 1000; display: none; align-items: center; justify-content: center;
+    }
   </style>
 </head>
 <body>
@@ -214,6 +315,15 @@
   <span id="count-label"></span>
   <button id="select-all-btn" onclick="toggleSelectAll()">&#x5168;&#x9009;</button>
 </header>
+
+<!-- Tab 栏 -->
+<div class="tab-bar">
+  <button class="tab-btn active" id="tab-download" onclick="switchTab('download')">&#x4E0B;&#x8F7D;&#x5230;&#x624B;&#x673A;</button>
+  <button class="tab-btn" id="tab-upload" onclick="switchTab('upload')">&#x4E0A;&#x4F20;&#x5230;&#x7535;&#x8111;</button>
+</div>
+
+<!-- ===== DOWNLOAD TAB ===== -->
+<div id="download-tab">
 
 <!-- iOS tip: shown only on iPhone/iPad -->
 <div id="ios-tip">
@@ -235,6 +345,47 @@
 </div>
 
 <div id="grid" style="display:none;"></div>
+
+</div><!-- end download-tab -->
+
+<!-- ===== UPLOAD TAB ===== -->
+<div id="upload-tab">
+  <input type="file" id="upload-input" multiple accept="image/*,video/*" style="display:none" onchange="onUploadFilesSelected()" />
+
+  <div id="upload-empty">
+    <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#c7c7cc" stroke-width="1.4">
+      <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
+      <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+    </svg>
+    <span>&#x9009;&#x62E9;&#x624B;&#x673A;&#x76F8;&#x518C;&#x91CC;&#x7684;&#x7167;&#x7247;&#xFF0C;&#x4E0A;&#x4F20;&#x5230;&#x7535;&#x8111;</span>
+    <button id="upload-pick-btn" onclick="document.getElementById('upload-input').click()">
+      &#x9009;&#x62E9;&#x7167;&#x7247;
+    </button>
+  </div>
+
+  <div id="upload-preview-grid" style="display:none;"></div>
+</div><!-- end upload-tab -->
+
+<!-- Photo preview lightbox -->
+<div id="preview-lightbox">
+  <button id="pl-close" onclick="closePreview()">&#x2715;</button>
+  <div id="pl-img-wrap">
+    <button id="pl-prev" onclick="stepPreview(-1)">&#x2039;</button>
+    <img id="pl-img" src="" alt="" />
+    <button id="pl-next" onclick="stepPreview(1)">&#x203A;</button>
+  </div>
+  <div id="pl-info"></div>
+</div>
+
+<!-- Upload progress overlay -->
+<div id="upload-overlay">
+  <div class="fetch-box">
+    <div class="fetch-spinner"></div>
+    <div id="upload-text">&#x6B63;&#x5728;&#x4E0A;&#x4F20;...</div>
+    <div class="fetch-bar-wrap"><div id="upload-bar" style="height:100%;background:#34c759;border-radius:2px;width:0%;transition:width 0.25s;"></div></div>
+    <div class="fetch-hint">&#x8BF7;&#x4FDD;&#x6301;&#x5728;&#x6B64;&#x9875;&#x9762;</div>
+  </div>
+</div>
 
 <!-- LIGHTBOX -->
 <div id="lightbox">
@@ -287,9 +438,20 @@
 </div>
 
 <footer>
-  <button id="open-btn" disabled>&#x9009;&#x62E9;&#x8981;&#x4FDD;&#x5B58;&#x7684;&#x7167;&#x7247;</button>
-  <div id="view-link-wrap">
-    <button id="view-link-btn" onclick="openLightboxSelected()">&#x4EC5;&#x6D4F;&#x89C8;&#xFF0C;&#x4E0D;&#x4FDD;&#x5B58;</button>
+  <!-- 下载 Tab footer -->
+  <div id="footer-download">
+    <button id="open-btn" disabled>&#x9009;&#x62E9;&#x8981;&#x4FDD;&#x5B58;&#x7684;&#x7167;&#x7247;</button>
+    <div id="view-link-wrap">
+      <button id="view-link-btn" onclick="openLightboxSelected()">&#x4EC5;&#x6D4F;&#x89C8;&#xFF0C;&#x4E0D;&#x4FDD;&#x5B58;</button>
+    </div>
+  </div>
+  <!-- 上传 Tab footer -->
+  <div id="footer-upload" style="display:none;">
+    <button id="upload-submit-btn" disabled onclick="startUpload()">&#x9009;&#x62E9;&#x7167;&#x7247;&#x540E;&#x4E0A;&#x4F20;</button>
+    <div style="text-align:center;padding-top:7px;">
+      <button style="background:none;border:none;color:#007aff;font-size:14px;cursor:pointer;font-family:inherit;padding:4px 12px;"
+        onclick="document.getElementById('upload-input').click()">&#x91CD;&#x65B0;&#x9009;&#x62E9;</button>
+    </div>
   </div>
 </footer>
 
@@ -546,6 +708,179 @@
       heif:'image/heic', hif:'image/heic', avif:'image/avif',
       tif:'image/tiff', tiff:'image/tiff' };
     return m[ext] || 'application/octet-stream';
+  }
+
+  // ===== TAB SWITCHING =====
+  let currentTab = 'download';
+
+  function switchTab(tab) {
+    currentTab = tab;
+    document.getElementById('tab-download').classList.toggle('active', tab === 'download');
+    document.getElementById('tab-upload').classList.toggle('active', tab === 'upload');
+    document.getElementById('download-tab').style.display = tab === 'download' ? 'block' : 'none';
+    document.getElementById('upload-tab').style.display = tab === 'upload' ? 'block' : 'none';
+    document.getElementById('footer-download').style.display = tab === 'download' ? '' : 'none';
+    document.getElementById('footer-upload').style.display = tab === 'upload' ? '' : 'none';
+    // header 全选按钮只在下载 Tab 有意义
+    document.getElementById('select-all-btn').style.visibility = tab === 'download' ? 'visible' : 'hidden';
+    document.getElementById('count-label').style.display = tab === 'download' ? '' : 'none';
+  }
+
+  // ===== UPLOAD TAB =====
+  let uploadFiles = [];       // File[]
+  let uploadObjectURLs = [];  // 与 uploadFiles 一一对应，延迟 revoke
+
+  function onUploadFilesSelected() {
+    const input = document.getElementById('upload-input');
+    const newFiles = Array.from(input.files || []);
+    if (!newFiles.length) return;
+    newFiles.forEach(f => {
+      uploadFiles.push(f);
+      uploadObjectURLs.push(URL.createObjectURL(f));
+    });
+    input.value = '';
+    renderUploadPreview();
+  }
+
+  function removeUploadFile(idx) {
+    URL.revokeObjectURL(uploadObjectURLs[idx]);
+    uploadFiles.splice(idx, 1);
+    uploadObjectURLs.splice(idx, 1);
+    renderUploadPreview();
+  }
+
+  function clearUploadFiles() {
+    uploadObjectURLs.forEach(u => URL.revokeObjectURL(u));
+    uploadFiles = [];
+    uploadObjectURLs = [];
+  }
+
+  function renderUploadPreview() {
+    const empty = document.getElementById('upload-empty');
+    const grid  = document.getElementById('upload-preview-grid');
+    const btn   = document.getElementById('upload-submit-btn');
+    if (!uploadFiles.length) {
+      empty.style.display = 'flex';
+      grid.style.display  = 'none';
+      btn.disabled = true;
+      btn.textContent = '\u9009\u62E9\u7167\u7247\u540E\u4E0A\u4F20';
+      return;
+    }
+    empty.style.display = 'none';
+    grid.style.display  = 'grid';
+    btn.disabled = false;
+    btn.textContent = '\u4E0A\u4F20 ' + uploadFiles.length + ' \u5F20';
+    grid.innerHTML = '';
+    uploadFiles.forEach((file, idx) => {
+      const item = document.createElement('div');
+      item.className = 'up-item';
+      const img = document.createElement('img');
+      img.src = uploadObjectURLs[idx];
+      // 整个格子都可点击预览（移动端 img 直接绑 click 延迟且不可靠）
+      item.addEventListener('click', (e) => {
+        if (!e.target.classList.contains('up-remove')) openPreview(idx);
+      });
+      const rmBtn = document.createElement('button');
+      rmBtn.className = 'up-remove';
+      rmBtn.textContent = '\u00D7';
+      rmBtn.onclick = (e) => { e.stopPropagation(); removeUploadFile(idx); };
+      const status = document.createElement('div');
+      status.className = 'up-status';
+      status.id = 'up-status-' + idx;
+      item.append(img, rmBtn, status);
+      grid.appendChild(item);
+    });
+  }
+
+  // ===== LIGHTBOX PREVIEW =====
+  let previewIdx = 0;
+
+  function openPreview(idx) {
+    previewIdx = idx;
+    _renderLightbox();
+    document.getElementById('preview-lightbox').style.display = 'flex';
+  }
+
+  function closePreview() {
+    document.getElementById('preview-lightbox').style.display = 'none';
+  }
+
+  function stepPreview(delta) {
+    previewIdx = Math.max(0, Math.min(uploadFiles.length - 1, previewIdx + delta));
+    _renderLightbox();
+  }
+
+  function _renderLightbox() {
+    const img  = document.getElementById('pl-img');
+    const info = document.getElementById('pl-info');
+    img.src = uploadObjectURLs[previewIdx];   // blob URL 已存在，直接显示，不用 opacity 动画
+    info.textContent = uploadFiles[previewIdx].name + ' \u00B7 ' + (previewIdx + 1) + ' / ' + uploadFiles.length;
+    document.getElementById('pl-prev').disabled = previewIdx === 0;
+    document.getElementById('pl-next').disabled = previewIdx === uploadFiles.length - 1;
+  }
+
+  // 触摸滑动切换
+  (function() {
+    let tx = 0;
+    const lb = document.getElementById('preview-lightbox');
+    lb.addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
+    lb.addEventListener('touchend', e => {
+      const dx = e.changedTouches[0].clientX - tx;
+      if (Math.abs(dx) > 50) { stepPreview(dx < 0 ? 1 : -1); }
+    });
+    lb.addEventListener('click', e => {
+      if (e.target === lb || e.target.id === 'pl-img-wrap') closePreview();
+    });
+  })();
+
+  async function startUpload() {
+    if (!uploadFiles.length) return;
+    const overlay  = document.getElementById('upload-overlay');
+    const textEl   = document.getElementById('upload-text');
+    const barEl    = document.getElementById('upload-bar');
+    const btn      = document.getElementById('upload-submit-btn');
+    closePreview();
+    overlay.style.display = 'flex';
+    btn.disabled = true;
+    barEl.style.width = '0%';
+
+    let savedCount = 0;
+    let errorCount = 0;
+
+    for (let i = 0; i < uploadFiles.length; i++) {
+      textEl.textContent = '\u6B63\u5728\u4E0A\u4F20 ' + (i + 1) + ' / ' + uploadFiles.length + ' \u5F20';
+      barEl.style.width = (i / uploadFiles.length * 100) + '%';
+
+      const fd = new FormData();
+      fd.append('file', uploadFiles[i], uploadFiles[i].name);
+
+      try {
+        const resp = await fetch('/api/upload', { method: 'POST', body: fd });
+        const json = await resp.json();
+        if (json.saved && json.saved.length > 0) {
+          savedCount += json.saved.length;
+          const statusEl = document.getElementById('up-status-' + i);
+          if (statusEl) { statusEl.textContent = '\u2705'; statusEl.style.display = 'flex'; }
+        } else {
+          errorCount++;
+          const statusEl = document.getElementById('up-status-' + i);
+          if (statusEl) { statusEl.textContent = '\u274C'; statusEl.style.display = 'flex'; }
+        }
+      } catch (e) {
+        errorCount++;
+        const statusEl = document.getElementById('up-status-' + i);
+        if (statusEl) { statusEl.textContent = '\u274C'; statusEl.style.display = 'flex'; }
+      }
+    }
+
+    barEl.style.width = '100%';
+    overlay.style.display = 'none';
+    btn.disabled = false;
+
+    const msg = '\u4E0A\u4F20\u5B8C\u6210\uFF1A\u6210\u529F ' + savedCount + ' \u5F20'
+      + (errorCount ? '\uFF0C\u5931\u8D25 ' + errorCount + ' \u5F20' : '');
+    alert(msg);
+    if (savedCount > 0) { clearUploadFiles(); renderUploadPreview(); }
   }
 
   loadPhotos();

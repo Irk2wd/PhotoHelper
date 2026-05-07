@@ -225,3 +225,39 @@
   text-align: center;
   line-height: 1.5;
 }
+
+/* ── Received files log ── */
+.tv-received-log {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tv-received-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #34c759;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--color-border, #e0e0e0);
+}
+.tv-received-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+.tv-received-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'Consolas', 'SF Mono', monospace;
+  color: var(--color-text, #1a1a1a);
+}
+.tv-received-size {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--color-text-muted, #888);
+}

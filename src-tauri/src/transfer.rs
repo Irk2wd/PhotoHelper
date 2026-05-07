@@ -1,14 +1,16 @@
 use axum::{
     body::Body,
-    extract::{Path, State},
+    extract::{DefaultBodyLimit, Multipart, Path, State},
     http::{header, Response as HttpResponse, StatusCode},
     response::{Html, IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
     Router,
 };
 use hyper::{body::Incoming, server::conn::http1};
 use hyper_util::rt::TokioIo;
 use image::ImageFormat;
+use little_exif::exif_tag::ExifTag;
+use little_exif::metadata::Metadata;
 use rcgen::{CertificateParams, KeyPair, SanType};
 use serde::Serialize;
 use std::{net::IpAddr, sync::Arc};
@@ -25,6 +27,15 @@ use tower::ServiceExt as _;
 // ── 内部 HTTP 服务器状态 ─────────────────────────────────────
 struct ServerState {
     folder: String,
+    upload_folder: String,
+    app: tauri::AppHandle,
+}
+
+// ── 上传事件（发送给桌面端）──────────────────────────────────
+#[derive(Clone, Serialize)]
+pub struct FileReceivedEvent {
+    pub name: String,
+    pub size: u64,
 }
 
 // ── Tauri 插件状态 ────────────────────────────────────────────
@@ -52,7 +63,9 @@ pub struct StartTransferResult {
 #[tauri::command]
 pub async fn start_transfer(
     state: tauri::State<'_, TransferState>,
+    app: tauri::AppHandle,
     folder: String,
+    upload_folder: String,
     port: u16,
 ) -> Result<StartTransferResult, String> {
     // 关闭已有服务
@@ -61,6 +74,11 @@ pub async fn start_transfer(
         if let Some(handle) = guard.take() {
             let _ = handle.shutdown_tx.send(true);
         }
+    }
+
+    // 至少需要一个文件夹
+    if folder.is_empty() && upload_folder.is_empty() {
+        return Err("请至少选择一个文件夹（照片文件夹或接收文件夹）".to_string());
     }
 
     // 获取本机局域网 IP
@@ -111,12 +129,19 @@ pub async fn start_transfer(
         .map_err(|e| format!("端口 {} 绑定失败: {}", port, e))?;
 
     // 构建 axum 路由
-    let srv_state = Arc::new(ServerState { folder: folder.clone() });
-    let app = Router::new()
+    let upload_dir = if upload_folder.is_empty() { folder.clone() } else { upload_folder };
+    let srv_state = Arc::new(ServerState {
+        folder: folder.clone(),
+        upload_folder: upload_dir,
+        app,
+    });
+    let app_router = Router::new()
         .route("/", get(handle_ui))
         .route("/api/list", get(handle_list))
+        .route("/api/upload", post(handle_upload))
         .route("/thumb/:name", get(handle_thumb))
         .route("/file/:name", get(handle_file))
+        .layer(DefaultBodyLimit::max(200 * 1024 * 1024)) // 200MB，支持高清照片/视频
         .with_state(srv_state);
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
@@ -132,7 +157,7 @@ pub async fn start_transfer(
                 result = listener.accept() => {
                     let Ok((tcp, _)) = result else { break };
                     let tls_acc = acceptor.clone();
-                    let router = app.clone();
+                    let router = app_router.clone();
                     tokio::spawn(async move {
                         let Ok(tls) = tls_acc.accept(tcp).await else { return };
                         let io = TokioIo::new(tls);
@@ -177,7 +202,112 @@ async fn handle_ui() -> Html<&'static str> {
     Html(include_str!("../assets/transfer_ui.html"))
 }
 
+/// POST /api/upload — 接收手机上传的文件，保存到 upload_folder
+async fn handle_upload(
+    State(srv): State<Arc<ServerState>>,
+    mut multipart: Multipart,
+) -> Response {
+    use tauri::Emitter as _;
+    use tokio::io::AsyncWriteExt as _;
+
+    let mut saved: Vec<String> = Vec::new();
+    let mut errors: Vec<String> = Vec::new();
+
+    while let Ok(Some(field)) = multipart.next_field().await {
+        // 优先用 filename，fallback 到 field name
+        let raw_name = field
+            .file_name()
+            .map(|s| s.to_string())
+            .or_else(|| field.name().map(|s| s.to_string()))
+            .unwrap_or_else(|| "upload".to_string());
+
+        // 防目录穿越：只保留最后一段文件名
+        let base_name = std::path::Path::new(&raw_name)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "upload".to_string());
+
+        if base_name.contains("..") {
+            errors.push(format!("{}: 文件名非法", raw_name));
+            continue;
+        }
+
+        let data = match field.bytes().await {
+            Ok(b) => b,
+            Err(e) => {
+                errors.push(format!("{}: 读取失败 {}", raw_name, e));
+                continue;
+            }
+        };
+
+        // 处理文件名冲突：追加 _1, _2, ...
+        let dest_path = {
+            let base = std::path::Path::new(&srv.upload_folder).join(&base_name);
+            if !base.exists() {
+                base
+            } else {
+                let stem = std::path::Path::new(&base_name)
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| base_name.clone());
+                let ext = std::path::Path::new(&base_name)
+                    .extension()
+                    .map(|s| format!(".{}", s.to_string_lossy()))
+                    .unwrap_or_default();
+                let mut counter = 1u32;
+                loop {
+                    let candidate = std::path::Path::new(&srv.upload_folder)
+                        .join(format!("{}_{}{}", stem, counter, ext));
+                    if !candidate.exists() {
+                        break candidate;
+                    }
+                    counter += 1;
+                }
+            }
+        };
+
+        let final_name = dest_path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| base_name.clone());
+
+        match tokio::fs::File::create(&dest_path).await {
+            Ok(mut f) => {
+                if let Err(e) = f.write_all(&data).await {
+                    errors.push(format!("{}: 写入失败 {}", final_name, e));
+                } else {
+                    let size = data.len() as u64;
+                    let _ = srv.app.emit(
+                        "transfer://file-received",
+                        FileReceivedEvent { name: final_name.clone(), size },
+                    );
+                    saved.push(final_name);
+                }
+            }
+            Err(e) => {
+                errors.push(format!("{}: 创建文件失败 {}", final_name, e));
+            }
+        }
+    }
+
+    let body = serde_json::json!({ "saved": saved, "errors": errors }).to_string();
+    HttpResponse::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/json; charset=utf-8")
+        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .body(Body::from(body))
+        .unwrap()
+}
+
 async fn handle_list(State(srv): State<Arc<ServerState>>) -> Response {
+    // 未设置下载文件夹时返回空列表（仅使用上传功能时）
+    if srv.folder.is_empty() {
+        return HttpResponse::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "application/json; charset=utf-8")
+            .body(axum::body::Body::from("[]"))
+            .unwrap();
+    }
     let image_exts = [
         ".jpg", ".jpeg", ".png", ".webp", ".bmp",
         ".tif", ".tiff", ".hif", ".heic", ".heif", ".avif",
@@ -243,6 +373,7 @@ async fn handle_thumb(
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
 
+    let img = apply_exif_orientation(img, &path);
     let thumb = img.thumbnail(480, 480);
     let mut buf = Vec::new();
     if thumb
@@ -302,6 +433,33 @@ fn sanitize_name(name: &str) -> Option<Response> {
 }
 
 /// 加载图片：Windows 下对 HEIF 系列使用 WIC，其他用 image crate
+fn apply_exif_orientation(img: image::DynamicImage, path: &std::path::Path) -> image::DynamicImage {
+    let orientation = Metadata::new_from_path(path)
+        .ok()
+        .and_then(|meta| {
+            meta.get_tag(&ExifTag::Orientation(vec![]))
+                .and_then(|tag| {
+                    if let ExifTag::Orientation(vals) = tag {
+                        vals.first().copied()
+                    } else {
+                        None
+                    }
+                })
+        })
+        .unwrap_or(1);
+
+    match orientation {
+        2 => img.fliph(),
+        3 => img.rotate180(),
+        4 => img.flipv(),
+        5 => img.rotate90().fliph(),
+        6 => img.rotate90(),
+        7 => img.rotate270().fliph(),
+        8 => img.rotate270(),
+        _ => img,
+    }
+}
+
 fn load_image(
     path: &std::path::Path,
     ext: &str,
