@@ -246,6 +246,11 @@ async fn handle_upload(
             continue;
         }
 
+        let ext_lower = std::path::Path::new(&base_name)
+            .extension()
+            .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
+            .unwrap_or_default();
+
         // 处理文件名冲突：追加 _1, _2, ...
         let dest_path = {
             let base = std::path::Path::new(&srv.upload_folder).join(&base_name);
@@ -307,6 +312,39 @@ async fn handle_upload(
             let _ = tokio::fs::remove_file(&dest_path).await;
             continue;
         }
+
+        // ── 时间戳重命名（图片类；视频跳过）─────────────────────────────
+        const VIDEO_EXTS: &[&str] = &[".mp4", ".mov", ".avi", ".mkv", ".m4v"];
+        let dest_path = if !VIDEO_EXTS.contains(&ext_lower.as_str()) {
+            let datetime_opt = read_exif_datetime_for_rename(&dest_path);
+            if let Some(ts) = datetime_opt {
+                let new_name = format!("{}{}", ts, ext_lower);
+                let new_path = {
+                    let base = std::path::Path::new(&srv.upload_folder).join(&new_name);
+                    if !base.exists() {
+                        base
+                    } else {
+                        let stem = &ts;
+                        let mut counter = 1u32;
+                        loop {
+                            let candidate = std::path::Path::new(&srv.upload_folder)
+                                .join(format!("{}_{}{}", stem, counter, ext_lower));
+                            if !candidate.exists() { break candidate; }
+                            counter += 1;
+                        }
+                    }
+                };
+                if std::fs::rename(&dest_path, &new_path).is_ok() {
+                    new_path
+                } else {
+                    dest_path
+                }
+            } else {
+                dest_path
+            }
+        } else {
+            dest_path
+        };
 
         let final_name = dest_path
             .file_name()
@@ -515,4 +553,22 @@ fn ext_to_mime(ext: &str) -> &'static str {
         "tif" | "tiff" => "image/tiff",
         _ => "application/octet-stream",
     }
+}
+
+/// 从图片 EXIF 读取拍摄时间，格式化为 YYYYMMdd_HHmmss
+fn read_exif_datetime_for_rename(path: &std::path::Path) -> Option<String> {
+    let metadata = Metadata::new_from_path(path).ok()?;
+    for tag in metadata.data() {
+        if let ExifTag::DateTimeOriginal(s) = tag {
+            if s.len() >= 19 {
+                let ts = format!(
+                    "{}{}{}_{}{}{}" ,
+                    &s[0..4], &s[5..7], &s[8..10],
+                    &s[11..13], &s[14..16], &s[17..19],
+                );
+                return Some(ts);
+            }
+        }
+    }
+    None
 }
