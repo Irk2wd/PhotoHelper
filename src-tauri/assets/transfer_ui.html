@@ -339,7 +339,7 @@
 
 <!-- iOS tip: shown only on iPhone/iPad -->
 <div id="ios-tip">
-  &#x1F4A1; <strong>&#x9996;&#x6B21;&#x4F7F;&#x7528;&#xFF1A;</strong>Safari &#x4F1A;&#x63D0;&#x793A;&#x300C;&#x6B64;&#x8FDE;&#x63A5;&#x4E0D;&#x5B89;&#x5168;&#x300D;&#xFF0C;&#x70B9;&#x300C;&#x9AD8;&#x7EA7;&#x300D; &#x2192; &#x300C;&#x7EE7;&#x7EED;&#x8BBF;&#x95EE;&#x300D;&#x5373;&#x53EF;&#x3002;&#x4E4B;&#x540E;&#x52FE;&#x9009;&#x7167;&#x7247;&#x70B9;&#x300C;&#x4FDD;&#x5B58;&#x5230;&#x76F8;&#x518C;&#x300D;&#xFF0C;&#x5373;&#x53EF;&#x6279;&#x91CF;&#x5B58;&#x5165;&#x76F8;&#x518C;&#x3002;
+  &#x1F4A1; <strong>&#x9996;&#x6B21;&#x4F7F;&#x7528;&#xFF1A;</strong>Safari &#x4F1A;&#x63D0;&#x793A;&#x300C;&#x6B64;&#x8FDE;&#x63A5;&#x4E0D;&#x5B89;&#x5168;&#x300D;&#xFF0C;&#x70B9;&#x300C;&#x9AD8;&#x7EA7;&#x300D; &#x2192; &#x300C;&#x7EE7;&#x7EED;&#x8BBF;&#x95EE;&#x300D;&#x5373;&#x53EF;&#x3002;&#x52FE;&#x9009;&#x7167;&#x7247;&#x540E;&#x70B9;&#x300C;&#x67E5;&#x770B;&#x5E76;&#x4FDD;&#x5B58;&#x5230;&#x76F8;&#x518C;&#x300D;&#xFF0C;&#x5728;&#x706F;&#x7BB1;&#x91CC;<strong>&#x957F;&#x6309;&#x56FE;&#x7247; &#x2192; &#x6DFB;&#x52A0;&#x5230;&#x7167;&#x7247;</strong>&#x5373;&#x53EF;&#x5B58;&#x5165;&#x76F8;&#x518C;&#x3002;
 </div>
 
 <div id="loading-state" class="state-screen">
@@ -484,8 +484,12 @@
   if (isIOS) {
     document.getElementById('ios-tip').style.display = 'block';
     document.getElementById('lb-ios-tip').style.display = 'block';
-    document.getElementById('view-link-wrap').style.display = 'block';
-    document.getElementById('open-btn').onclick = batchSave;
+    document.getElementById('view-link-wrap').style.display = 'none';
+    // iOS Safari 的 navigator.share() 要求在同步用户手势中调用，
+    // 先 await fetch blob 会断开手势链导致 NotAllowedError。
+    // 改为直接打开灯箱，灯箱内长按图片即可保存到相册。
+    document.getElementById('open-btn').textContent = '查看并保存到相册';
+    document.getElementById('open-btn').onclick = openLightboxSelected;
   } else {
     document.getElementById('lb-share-btn').style.display = 'flex';
     document.getElementById('lb-placeholder').style.display = 'none';
