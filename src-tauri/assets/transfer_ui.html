@@ -545,6 +545,7 @@
   function toggleSelect(name, el) {
     if (selected.has(name)) { selected.delete(name); el.classList.remove('selected'); }
     else                    { selected.add(name);    el.classList.add('selected'); }
+    iosSaveQueue = []; iosSaveIndex = 0; // 选择变更时重置分批队列
     updateFooter();
   }
 
@@ -557,6 +558,7 @@
       photos.forEach(p => selected.add(p.name));
       document.querySelectorAll('.photo-item').forEach(el => el.classList.add('selected'));
     }
+    iosSaveQueue = []; iosSaveIndex = 0; // 选择变更时重置分批队列
     updateFooter();
   }
 
@@ -638,9 +640,22 @@
   // ===== BATCH SAVE (iOS) =====
   let fetchAbortCtrl = null;
 
+  // iOS 分批保存状态：每次点击只 share 一批，然后用户再次点击继续下一批
+  let iosSaveQueue = [];
+  let iosSaveIndex = 0;
+
   async function batchSave() {
-    if (!selected.size) return;
-    const names = [...selected];
+    const CHUNK = 5;
+    // 若上一批已全部完成（或第一次点击），从当前选择重新开始
+    if (iosSaveIndex >= iosSaveQueue.length) {
+      if (!selected.size) return;
+      iosSaveQueue = [...selected];
+      iosSaveIndex = 0;
+    }
+
+    const chunk_names = iosSaveQueue.slice(iosSaveIndex, iosSaveIndex + CHUNK);
+    if (!chunk_names.length) return;
+
     fetchAbortCtrl = new AbortController();
     const signal  = fetchAbortCtrl.signal;
 
@@ -648,17 +663,18 @@
     const textEl   = document.getElementById('fetch-text');
     const barEl    = document.getElementById('fetch-bar');
     overlay.style.display = 'flex';
-    barEl.style.width = '0%';
+    barEl.style.width = (iosSaveIndex / iosSaveQueue.length * 100) + '%';
 
+    // 只加载本批文件，保留用户手势激活窗口
     const files = [];
     try {
-      for (let i = 0; i < names.length; i++) {
+      for (let i = 0; i < chunk_names.length; i++) {
         if (signal.aborted) break;
-        textEl.textContent = '\u6B63\u5728\u52A0\u8F7D ' + (i + 1) + ' / ' + names.length + ' \u5F20';
-        barEl.style.width = (i / names.length * 100) + '%';
-        const resp = await fetch('/file/' + encodeURIComponent(names[i]), { signal });
+        textEl.textContent = '\u6B63\u5728\u52A0\u8F7D ' + (iosSaveIndex + i + 1) + ' / ' + iosSaveQueue.length + ' \u5F20';
+        barEl.style.width = ((iosSaveIndex + i) / iosSaveQueue.length * 100) + '%';
+        const resp = await fetch('/file/' + encodeURIComponent(chunk_names[i]), { signal });
         const blob = await resp.blob();
-        files.push(new File([blob], names[i], { type: blob.type || guessMime(names[i]) }));
+        files.push(new File([blob], chunk_names[i], { type: blob.type || guessMime(chunk_names[i]) }));
       }
     } catch(e) {
       overlay.style.display = 'none';
@@ -669,26 +685,24 @@
     overlay.style.display = 'none';
     if (!files.length) return;
 
-    // iOS share API 单次有文件数量/大小上限，超过会抛 NotAllowedError。
-    // 解决方案：每批最多 5 张，顺序弹出系统分享框，用户逐批保存到相册。
-    const CHUNK = 5;
-    const canShareFiles = navigator.canShare && navigator.canShare({ files: files.slice(0, 1) });
-    if (canShareFiles) {
-      for (let c = 0; c < files.length; c += CHUNK) {
-        const chunk = files.slice(c, c + CHUNK);
-        try {
-          await navigator.share({ files: chunk });
-        } catch(e) {
-          if (e.name === 'AbortError') break; // 用户取消，停止后续批次
-          // share 失败兜底：打开灯箱
-          openLightboxSelected();
-          break;
-        }
-      }
-    } else if (navigator.share) {
-      await navigator.share({ url: location.origin + '/file/' + encodeURIComponent(names[0]) });
+    // 在同一用户手势窗口内 share 本批
+    try {
+      await navigator.share({ files });
+      iosSaveIndex += files.length;
+    } catch(e) {
+      if (e.name !== 'AbortError') alert('\u4FDD\u5B58\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5');
+      return;
+    }
+
+    // 更新按钮：若还有剩余，提示继续；否则重置
+    const btn = document.getElementById('open-btn');
+    const remaining = iosSaveQueue.length - iosSaveIndex;
+    if (remaining > 0) {
+      btn.textContent = '\u7EE7\u7EED\u4FDD\u5B58 (\u5269\u4F59 ' + remaining + ' \u5F20)';
     } else {
-      openLightboxSelected();
+      iosSaveQueue = [];
+      iosSaveIndex = 0;
+      updateFooter();
     }
   }
 
