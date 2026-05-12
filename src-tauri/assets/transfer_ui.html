@@ -96,25 +96,6 @@
     }
     #upload-submit-btn:disabled { opacity: 0.45; cursor: default; }
     #upload-submit-btn:active:not(:disabled) { opacity: 0.8; }
-    .upload-option-row {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 10px 2px 6px; font-size: 14px; color: #3c3c43;
-    }
-    .toggle-switch {
-      position: relative; width: 44px; height: 26px; flex-shrink: 0;
-    }
-    .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
-    .toggle-track {
-      position: absolute; inset: 0; border-radius: 13px;
-      background: #ccc; transition: background 0.2s; cursor: pointer;
-    }
-    .toggle-track::before {
-      content: ''; position: absolute; width: 20px; height: 20px; border-radius: 50%;
-      background: white; top: 3px; left: 3px;
-      box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform 0.2s;
-    }
-    .toggle-switch input:checked + .toggle-track { background: #34c759; }
-    .toggle-switch input:checked + .toggle-track::before { transform: translateX(18px); }
 
     /* ===== LIGHTBOX ===== */
     #lightbox {
@@ -479,13 +460,6 @@
   </div>
   <!-- 上传 Tab footer -->
   <div id="footer-upload" style="display:none;">
-    <div class="upload-option-row">
-      <span>HEIC &#x81EA;&#x52A8;&#x8F6C;&#x6362;&#x4E3A; JPG</span>
-      <label class="toggle-switch">
-        <input type="checkbox" id="convert-heic-toggle" />
-        <span class="toggle-track"></span>
-      </label>
-    </div>
     <button id="upload-submit-btn" disabled onclick="startUpload()">&#x9009;&#x62E9;&#x7167;&#x7247;&#x540E;&#x4E0A;&#x4F20;</button>
     <div style="text-align:center;padding-top:7px;">
       <button style="background:none;border:none;color:#007aff;font-size:14px;cursor:pointer;font-family:inherit;padding:4px 12px;"
@@ -924,7 +898,6 @@
       barEl.style.width = (i / uploadFiles.length * 100) + '%';
 
       const fd = new FormData();
-      fd.append('convert_heic', document.getElementById('convert-heic-toggle').checked ? '1' : '0');
       fd.append('file', uploadFiles[i], uploadFiles[i].name);
 
       try {

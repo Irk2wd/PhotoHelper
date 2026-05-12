@@ -226,18 +226,8 @@ async fn handle_upload(
 
     let mut saved: Vec<String> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
-    let mut convert_heic = false; // 默认不转换，由前端开关控制
 
     while let Ok(Some(mut field)) = multipart.next_field().await {
-        // 读取前端传来的 convert_heic 控制字段（无文件名的 text field）
-        if field.file_name().is_none() {
-            if field.name() == Some("convert_heic") {
-                let val = field.text().await.unwrap_or_default();
-                convert_heic = val.trim() == "1";
-            }
-            continue;
-        }
-
         // 优先用 filename，fallback 到 field name
         let raw_name = field
             .file_name()
@@ -323,42 +313,10 @@ async fn handle_upload(
             continue;
         }
 
-        // ── HEIC → JPG 转换（仅 Windows，且开关开启时）───────────────────
-        let pre_convert_datetime = read_exif_datetime_for_rename(&dest_path);
-        #[cfg(windows)]
-        let (dest_path, ext_lower) = if convert_heic && crate::is_heif_ext(&ext_lower) {
-            let jpg_path = dest_path.with_extension("jpg");
-            match crate::decode_heif_via_wic(&dest_path) {
-                Ok(rgb_img) => {
-                    let dyn_img = image::DynamicImage::ImageRgb8(rgb_img);
-                    let mut buf = Vec::new();
-                    if dyn_img
-                        .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Jpeg)
-                        .is_ok()
-                        && std::fs::write(&jpg_path, &buf).is_ok()
-                    {
-                        let _ = std::fs::remove_file(&dest_path);
-                        (jpg_path, ".jpg".to_string())
-                    } else {
-                        (dest_path, ext_lower)
-                    }
-                }
-                Err(_) => (dest_path, ext_lower),
-            }
-        } else {
-            (dest_path, ext_lower)
-        };
-        #[cfg(not(windows))]
-        let (dest_path, ext_lower) = (dest_path, ext_lower);
-
         // ── 时间戳重命名（图片类；视频跳过）─────────────────────────────
         const VIDEO_EXTS: &[&str] = &[".mp4", ".mov", ".avi", ".mkv", ".m4v"];
         let dest_path = if !VIDEO_EXTS.contains(&ext_lower.as_str()) {
-            let datetime_opt = if pre_convert_datetime.is_some() {
-                pre_convert_datetime
-            } else {
-                read_exif_datetime_for_rename(&dest_path)
-            };
+            let datetime_opt = read_exif_datetime_for_rename(&dest_path);
             if let Some(ts) = datetime_opt {
                 let new_name = format!("{}{}", ts, ext_lower);
                 let new_path = {
